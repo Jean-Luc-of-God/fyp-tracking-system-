@@ -1,122 +1,302 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useState, useEffect } from 'react';
+import { AppProvider, useAppContext } from './context/AppContext';
+import { 
+  AppShell, 
+  LoginLauncher, 
+  NAV, 
+  roleById 
+} from './components/Layout';
+import { 
+  StudentDashboard, 
+  StudentCase, 
+  StudentSupervisor, 
+  StudentTimeline 
+} from './pages/StudentDashboard';
+import { 
+  SupDashboard, 
+  SupSupervision, 
+  SupAvailability, 
+  SupSettings 
+} from './pages/SupervisorDashboard';
+import { 
+  FacPipeline, 
+  FacStudents, 
+  FacExaminers, 
+  FacPending, 
+  FacProtoData 
+} from './pages/FacilitatorDashboard';
+import { 
+  HODDashboard, 
+  HODUpload, 
+  HODRequest, 
+  HODReview, 
+  HODSupervisors, 
+  HODRecords, 
+  HODSupervisorWindow 
+} from './pages/HODDashboard';
+import { 
+  AdminDashboard, 
+  AdminAccounts, 
+  AdminAudit, 
+  AdminNotifications, 
+  AdminConfig 
+} from './pages/SuperadminDashboard';
+import { SupFindStudents, HODFindStudents } from './components/Filters';
+import { SupExamining } from './pages/ExaminerDashboard';
+import { RiskDashboard } from './components/Risk';
+import { EscalationLadder } from './components/Escalation';
+import { StaffAvailabilityDirectory } from './components/AvailabilityUI';
+import { EmptyState } from './components/SharedUI';
+import { ToastHost, notify } from './components/LetterUI';
+import { ResolveComplaintFlow } from './components/Emails';
+import { ConnectionBanner, ErrorBoundary, PageSkeletonFor } from './components/StateSystem';
+import { NotificationsPage } from './components/Notifications';
 
-function App() {
-  const [count, setCount] = useState(0)
+const PAGE_SKELETON: { [key: string]: 'form' | 'list' | 'detail' | 'dashboard' } = {
+  case: "form", 
+  upload: "form", 
+  request: "list", 
+  review: "list", 
+  find: "list", 
+  students: "list",
+  pending: "list", 
+  audit: "list", 
+  notifications: "list", 
+  accounts: "list", 
+  records: "detail",
+  proto: "form", 
+  settings: "form", 
+  availability: "detail", 
+  supervisor: "detail", 
+  timeline: "detail",
+  supervision: "detail", 
+  config: "form",
+};
+
+function skeletonKind(page: string) {
+  if (page === "__notifs") return "list";
+  return PAGE_SKELETON[page] || "dashboard";
+}
+
+function MainApp() {
+  const { students, notificationLogs, letters, activeUserId, switchUser } = useAppContext();
+  const [authed, setAuthed] = useState(false);
+  const [role, setRole] = useState<'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin'>("facilitator");
+  const [page, setPage] = useState("pipeline");
+  const [focusStudentId, setFocusStudentId] = useState<string | null>(null);
+  const [showFlow, setShowFlow] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const firstPage = (r: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') => NAV[r][0].id;
+
+  const greetUser = (r: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') => {
+    const hr = new Date().getHours();
+    const part = hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening";
+    const person = roleById[r]?.person || "";
+    let msg = `${part}, ${person}`;
+    try {
+      if (r === "hod") {
+        const n = students.filter(s => letters[s.id]?.status === "submitted").length;
+        msg += n ? ` — ${n} letter${n > 1 ? "s" : ""} need your review` : " — no letters pending review";
+      } else if (r === "facilitator") {
+        const n = 5; // standard coordinate items
+        msg += ` — ${n} item${n > 1 ? "s" : ""} need coordination`;
+      } else if (r === "supervisor") {
+        const n = students.filter(s => s.supervisorId === activeUserId && s.nextMeeting && !s.nextMeeting.confirmed).length;
+        msg += n ? ` — ${n} meeting${n > 1 ? "s" : ""} to confirm` : " — your students are on track";
+      } else if (r === "student") {
+        msg += " — here's where your project stands";
+      } else if (r === "superadmin") {
+        const f = notificationLogs.filter(n => n.status === "failed").length;
+        msg += f ? ` — ${f} email issue${f > 1 ? "s" : ""} to review` : " — all systems operational";
+      }
+    } catch (e) { /* ignore */ }
+    notify(msg, "info");
+  };
+
+  function login(r: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') {
+    const defaultIds = {
+      student: "STU-2026-014",
+      supervisor: "sup-hab",
+      facilitator: "fac-ing",
+      hod: "hod-biz",
+      superadmin: "adm-001"
+    };
+    switchUser(r, defaultIds[r]);
+    setRole(r);
+    setPage(firstPage(r));
+    setAuthed(true);
+    setTimeout(() => greetUser(r), 480);
+  }
+
+  function switchRole(r: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') {
+    const defaultIds = {
+      student: "STU-2026-014",
+      supervisor: "sup-hab",
+      facilitator: "fac-ing",
+      hod: "hod-biz",
+      superadmin: "adm-001"
+    };
+    switchUser(r, defaultIds[r]);
+    setRole(r);
+    setPage(firstPage(r));
+    setFocusStudentId(null);
+  }
+
+  function nav(p: string) {
+    setPage(p);
+    setFocusStudentId(null);
+  }
+
+  function open(p: string, studentId?: string) {
+    setPage(p);
+    setFocusStudentId(studentId || null);
+  }
+
+  function jump(r: string, p: string, studentId?: string) {
+    const typedRole = r as 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin';
+    const defaultIds = {
+      student: "STU-2026-014",
+      supervisor: "sup-hab",
+      facilitator: "fac-ing",
+      hod: "hod-biz",
+      superadmin: "adm-001"
+    };
+    switchUser(typedRole, defaultIds[typedRole]);
+    setRole(typedRole);
+    setPage(p);
+    setFocusStudentId(studentId || null);
+    setAuthed(true);
+    setShowFlow(false);
+  }
+
+  function goto(p: string, studentId?: string) {
+    if (p === "__notifs") {
+      setPage("__notifs");
+      setFocusStudentId(null);
+      return;
+    }
+    const navItems = NAV[role] || [];
+    const known = navItems.some(n => n.id === p);
+    if (known) {
+      setPage(p);
+      setFocusStudentId(studentId || null);
+    } else {
+      setPage("__notifs");
+    }
+  }
+
+  useEffect(() => {
+    if (!authed) return;
+    setLoading(true);
+    const t = setTimeout(() => setLoading(false), 420);
+    return () => clearTimeout(t);
+  }, [authed, role, page]);
+
+  if (!authed) {
+    return (
+      <>
+        <LoginLauncher onPick={login} />
+        <ToastHost />
+      </>
+    );
+  }
+
+  const navItem = (NAV[role] || []).find(n => n.id === page);
+  const isNotifs = page === "__notifs";
+
+  const renderView = () => {
+    if (isNotifs) {
+      return <NotificationsPage role={role} onOpen={goto} />;
+    }
+
+    if (role === "student") {
+      switch (page) {
+        case "dashboard": return <StudentDashboard onNav={nav} />;
+        case "case": return <StudentCase />;
+        case "supervisor": return <StudentSupervisor />;
+        case "timeline": return <StudentTimeline />;
+      }
+    } else if (role === "supervisor") {
+      switch (page) {
+        case "dashboard": return <SupDashboard onOpen={open} onNav={nav} />;
+        case "supervision": return <SupSupervision focusStudent={focusStudentId} />;
+        case "find": return <SupFindStudents onOpen={(id: string) => open("supervision", id)} />;
+        case "availability": return <SupAvailability />;
+        case "examining": return <SupExamining focusStudent={focusStudentId ? students.find(s => s.id === focusStudentId) || null : null} />;
+        case "settings": return <SupSettings />;
+      }
+    } else if (role === "facilitator") {
+      switch (page) {
+        case "pipeline": return <FacPipeline onOpen={(id: string) => open("students", id)} />;
+        case "risk": return <RiskDashboard onOpen={(id: string) => open("students", id)} scope="all" />;
+        case "escalation": return <EscalationLadder onOpen={(id: string) => open("students", id)} />;
+        case "students": return <FacStudents focusStudent={focusStudentId} onClearFocus={() => setFocusStudentId(null)} />;
+        case "pending": return <FacPending onOpen={(id: string) => open("students", id)} />;
+        case "supervisors": return <HODSupervisors />;
+        case "examiners": return <FacExaminers />;
+        case "availability": return <StaffAvailabilityDirectory title="Supervisor Availability" sub="Weekly office hours and contact points for staff." />;
+        case "proto": return <FacProtoData />;
+      }
+    } else if (role === "hod") {
+      switch (page) {
+        case "dashboard": return <HODDashboard onNav={nav} />;
+        case "risk": return <RiskDashboard onOpen={(id: string) => open("mysupervision", id)} scope="all" />;
+        case "escalation": return <EscalationLadder onOpen={(id: string) => open("mysupervision", id)} />;
+        case "find": return <HODFindStudents />;
+        case "upload": return <HODUpload />;
+        case "request": return <HODRequest />;
+        case "review": return <HODReview />;
+        case "mysupervision": return <HODSupervisorWindow />;
+        case "availability": return <StaffAvailabilityDirectory title="Supervisor Availability" sub="Weekly office hours and contact points for staff." />;
+        case "records": return <HODRecords />;
+      }
+    } else if (role === "superadmin") {
+      switch (page) {
+        case "dashboard": return <AdminDashboard onNav={nav} />;
+        case "accounts": return <AdminAccounts />;
+        case "audit": return <AdminAudit />;
+        case "notifications": return <AdminNotifications />;
+        case "config": return <AdminConfig />;
+      }
+    }
+
+    return <EmptyState icon="layers" title="Coming soon" sub="This screen isn't part of the current prototype scope yet." />;
+  };
 
   return (
     <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
+      <ConnectionBanner />
+      <AppShell 
+        role={role} 
+        page={page} 
+        onNav={nav} 
+        onSwitch={switchRole} 
+        onGoto={goto}
+        breadcrumb={isNotifs ? "Notifications" : (navItem ? navItem.label : "")} 
+        onResolveDemo={() => setShowFlow(true)}
+        onLogout={() => setAuthed(false)}
+      >
+        <ErrorBoundary key={role + page}>
+          {loading ? (
+            <PageSkeletonFor kind={skeletonKind(page)} />
+          ) : (
+            renderView()
+          )}
+        </ErrorBoundary>
+      </AppShell>
+      {showFlow && <ResolveComplaintFlow onClose={() => setShowFlow(false)} onJump={jump} />}
+      <ToastHost />
     </>
-  )
+  );
 }
 
-export default App
+function App() {
+  return (
+    <AppProvider>
+      <MainApp />
+    </AppProvider>
+  );
+}
+
+export default App;

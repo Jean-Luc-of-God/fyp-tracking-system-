@@ -1,0 +1,689 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { useAppContext } from '../context/AppContext';
+import type { Student, Supervisor } from '../types';
+import { 
+  Icon, 
+  Badge, 
+  Avatar, 
+  StateBadge, 
+  EmptyState, 
+  SectionTitle, 
+  MetricCard, 
+  Modal, 
+  StateTracker 
+} from '../components/SharedUI';
+import { EmailPreview } from '../components/Emails';
+import { Timeline } from '../components/Timeline';
+import { 
+  fmt, 
+  supById, 
+  SUPERVISORS, 
+  STATES, 
+  TEMPLATES 
+} from '../utils/fypData';
+import { notify } from '../components/LetterUI';
+
+/* ---------------- StudentRecord Component (shared accountability record) ---------------- */
+interface StudentRecordProps {
+  studentId: string;
+  onBack: () => void;
+  readOnly?: boolean;
+}
+
+export const StudentRecord: React.FC<StudentRecordProps> = ({ studentId, onBack, readOnly: _readOnly }) => {
+  const { students, notificationLogs, letters } = useAppContext();
+  const stu = students.find(s => s.id === studentId);
+  const [emailOpen, setEmailOpen] = useState<any>(null);
+
+  if (!stu) return <EmptyState title="Student not found" sub="Record could not be retrieved." />;
+
+  const sup = stu.supervisorId ? supById[stu.supervisorId] : null;
+  
+  // Let's build her timeline events list
+  const L = letters[stu.id] || { status: 'none' };
+  
+  const events = useMemo(() => {
+    const list: any[] = [];
+    // Base registration
+    list.push({
+      label: "Registered in cohort · Class of 2026",
+      actor: { name: "Dr. Bizimungu", role: "HOD" },
+      ts: stu.bookRegisteredTs,
+      email: "reg-confirmed",
+      note: "Final Year Book registered — the 1-year deadline begins here"
+    });
+    
+    // Case study submission/approval
+    if (L.requestedTs) {
+      list.push({
+        label: "Case-study letter requested by HOD",
+        actor: { name: "Dr. Bizimungu", role: "HOD" },
+        ts: new Date(L.requestedTs).toISOString(),
+        note: "Submission window opened — you can now send your letter"
+      });
+    }
+    if (L.submittedTs) {
+      list.push({
+        label: "Case-study letter submitted",
+        actor: { name: stu.name, role: "Student" },
+        ts: new Date(L.submittedTs).toISOString(),
+        file: L.file || "case-letter.pdf"
+      });
+    }
+    if (L.status === "rejected" && L.rejectedTs) {
+      list.push({
+        label: "Letter returned for revision",
+        actor: { name: "Dr. Bizimungu", role: "HOD" },
+        ts: new Date(L.rejectedTs).toISOString(),
+        kind: "rework",
+        reasonHtml: L.rejectionReason
+      });
+    }
+    if (L.status === "approved" && L.approvedTs) {
+      list.push({
+        label: "Case letter approved — advance to Prototyping",
+        actor: { name: "Dr. Bizimungu", role: "HOD" },
+        ts: new Date(L.approvedTs).toISOString(),
+        email: "case-approved",
+        note: "Requirements document attached"
+      });
+    }
+
+    return list.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  }, [stu, L]);
+
+  const emails = notificationLogs.filter(n => n.studentId === stu.id);
+  const exPre = stu.examinerPreId ? supById[stu.examinerPreId] : null;
+
+  return (
+    <div className="fade-in">
+      <button className="btn btn-quiet btn-sm" onClick={onBack} style={{ marginBottom: 14, paddingLeft: 6 }}>
+        <Icon name="chevronLeft" size={15} /> Back to all students
+      </button>
+
+      {/* header card */}
+      <div className="card" style={{ overflow: "hidden", marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, padding: "18px 22px" }}>
+          <div style={{ display: "flex", gap: 15 }}>
+            <Avatar name={stu.name} role="Student" size={54} />
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <h2 style={{ fontSize: 21 }}>{stu.name}</h2>
+                <span className="mono" style={{ fontSize: 12.5, color: "var(--ink-3)", background: "var(--surface-2)", padding: "2px 8px", borderRadius: 5 }}>{stu.id}</span>
+                {stu.flagged && <Badge tone="red" dot>COMPLAINT ON FILE</Badge>}
+              </div>
+              <div className="muted" style={{ fontSize: 13.5, marginTop: 5 }}>{stu.topic} · case study: <strong style={{ color: "var(--ink-2)" }}>{stu.org}</strong></div>
+              <div style={{ display: "flex", gap: 18, marginTop: 9, flexWrap: "wrap", fontSize: 12.5, color: "var(--ink-3)" }}>
+                <span><Icon name="user" size={13} style={{ verticalAlign: -2 }} /> {stu.group}</span>
+                <span><Icon name="mail" size={13} style={{ verticalAlign: -2 }} /> {stu.email}</span>
+                {sup && <span><Icon name="users" size={13} style={{ verticalAlign: -2 }} /> Supervisor: {sup.name}</span>}
+                {exPre && <span style={{ color: "var(--violet)" }}><Icon name="scale" size={13} style={{ verticalAlign: -2 }} /> Examiner: {exPre.name}</span>}
+              </div>
+            </div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div className="eyebrow" style={{ marginBottom: 6 }}>Current state</div>
+            <StateBadge stateIndex={stu.stateIndex} />
+            <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>In stage since {fmt(stu.enteredStageTs)}</div>
+          </div>
+        </div>
+        <div style={{ padding: "14px 22px 16px", borderTop: "1px solid var(--line-soft)", background: "var(--surface)" }}>
+          <StateTracker stateIndex={stu.stateIndex} attempts={stu.attempts} protoPres={stu.protoPres} compact />
+        </div>
+      </div>
+
+      <div className="resp-stack" style={{ display: "grid", gridTemplateColumns: "1.55fr 1fr", gap: 18, alignItems: "start" }}>
+        {/* timeline */}
+        <div className="card">
+          <div className="card-hd"><h3><Icon name="history" size={16} style={{ verticalAlign: -3, marginRight: 7, color: "var(--navy)" }} />Accountability timeline</h3><span className="muted" style={{ fontSize: 12 }}>{events.length} recorded events</span></div>
+          <div className="card-pad"><Timeline events={events} highlightEmails={stu.flagged} /></div>
+        </div>
+
+        {/* right column */}
+        <div style={{ display: "grid", gap: 18 }}>
+          {/* attempts / rework summary */}
+          <div className="card">
+            <div className="card-hd"><h3>Rework &amp; accountability</h3></div>
+            <div className="card-pad" style={{ display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13 }}>Prototype presentations</span>
+                <Badge tone={stu.protoPres > 1 ? "amber" : "grey"}>{stu.protoPres || 0}× {stu.protoPres > 1 && "(refined)"}</Badge>
+              </div>
+              <div className="hr" />
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 13 }}>Proposal attempts</span>
+                  <Badge tone={(stu.attempts || []).some(a => a.status === "rejected") ? "red" : "grey"}>{(stu.attempts || []).length} submitted · {(stu.attempts || []).filter(a => a.status === "rejected").length} rejected</Badge>
+                </div>
+                {(stu.attempts || []).map(a => (
+                  <div key={a.n} style={{ display: "flex", gap: 9, fontSize: 12, padding: "6px 0", borderTop: "1px solid var(--line-soft)" }}>
+                    <span className="mono" style={{ color: "var(--ink-4)", flex: "none" }}>#{a.n}</span>
+                    <span style={{ flex: 1 }}>
+                      <Badge tone={a.status === "accepted" ? "green" : a.status === "rejected" ? "red" : "blue"} style={{ height: 16, fontSize: 9.5 }}>{a.status.toUpperCase()}</Badge>
+                      {a.reason && <div className="muted" style={{ marginTop: 4 }}>{a.reason}</div>}
+                    </span>
+                    <span className="mono muted" style={{ fontSize: 10.5, flex: "none" }}>{fmt(a.ts)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* emails sent */}
+          <div className="card">
+            <div className="card-hd"><h3><Icon name="mail" size={15} style={{ verticalAlign: -3, marginRight: 6, color: "var(--blue)" }} />Emails sent</h3><span className="muted" style={{ fontSize: 12 }}>{emails.length}</span></div>
+            <div>
+              {emails.map((n, i) => (
+                <button key={n.id} onClick={() => setEmailOpen(n)} style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 18px", border: 0, borderTop: i ? "1px solid var(--line-soft)" : 0, background: "transparent", cursor: "pointer", textAlign: "left" }} className="email-list-row">
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{TEMPLATES[n.template]?.event || n.template}</div>
+                    <div className="mono muted" style={{ fontSize: 10.5 }}>→ {n.toName} · {fmt(n.ts)}</div>
+                  </div>
+                  <Badge tone={n.status === "failed" ? "red" : n.status === "retried" ? "amber" : "green"} style={{ flex: "none" }}>{n.status}</Badge>
+                </button>
+              ))}
+              {!emails.length && <div className="card-pad muted" style={{ fontSize: 12.5 }}>No emails sent yet at this stage.</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Modal open={!!emailOpen} onClose={() => setEmailOpen(null)} width={540}>
+        {emailOpen && (
+          <div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setEmailOpen(null)}>
+                <Icon name="x" size={14} /> Close
+              </button>
+            </div>
+            <EmailPreview 
+              templateKey={emailOpen.template} 
+              student={stu} 
+              supervisor={sup || undefined} 
+              examiner={exPre || undefined} 
+              status={emailOpen.status} 
+              to={emailOpen.to} 
+              toName={emailOpen.toName} 
+              ts={emailOpen.ts} 
+              attempt={2} 
+              reason={(stu.attempts || []).find(a => a.reason)?.reason} 
+            />
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+};
+
+/* ---------------- FacPipeline Component (Kanban view) ---------------- */
+interface FacPipelineProps {
+  onOpen: (page: string, id: string) => void;
+}
+
+export const FacPipeline: React.FC<FacPipelineProps> = ({ onOpen }) => {
+  const { students, pendingItems } = useAppContext();
+  
+  const counts = useMemo(() => {
+    const list = Array(11).fill(0);
+    students.forEach(s => {
+      if (s.stateIndex >= 0 && s.stateIndex < 11) {
+        list[s.stateIndex]++;
+      }
+    });
+    return list;
+  }, [students]);
+
+  const total = students.length;
+  const supervisionN = counts[7];
+  const proposalN = counts[5];
+  const colColor: { [key: string]: string } = { 
+    navy: "var(--navy)", 
+    blue: "var(--blue)", 
+    green: "var(--green)", 
+    amber: "var(--amber-deep)", 
+    violet: "var(--violet)" 
+  };
+
+  return (
+    <div>
+      <SectionTitle sub={`Whole cohort at a glance · Class of 2026 · ${total} students`}>Pipeline Overview</SectionTitle>
+
+      {/* metrics */}
+      <div className="resp-cols-4" style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 14, marginBottom: 18 }}>
+        <MetricCard label="Total students" value={total} sub="Class of 2026" icon="users" tone="navy" />
+        <MetricCard label="In supervision" value={supervisionN} sub="primary-focus stage" icon="activity" tone="amber" active />
+        <MetricCard label="In proposal review" value={proposalN} sub="watch for rejections" icon="book" tone="blue" />
+        <MetricCard label="Reached defense" value={counts[10]} sub="journey complete" icon="scale" tone="green" />
+        <MetricCard label="Pending coordination" value={pendingItems.length} sub="needs your action" icon="alert" tone="red" onClick={() => onOpen("pending", "")} />
+      </div>
+
+      {/* bottleneck banner */}
+      <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 16px", background: "var(--amber-bg)", border: "1px solid #EAD08A", borderRadius: 10, marginBottom: 16, fontSize: 13 }}>
+        <Icon name="alert" size={17} style={{ color: "var(--amber-deep)", flex: "none" }} />
+        <span style={{ color: "var(--ink-2)" }}><strong>Bottleneck:</strong> {supervisionN} students are sitting in <strong>Supervision</strong> and {proposalN} in <strong>Proposal Review</strong> — the two stages where students typically stall. Surface blocked students below.</span>
+      </div>
+
+      {/* kanban */}
+      <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 12 }}>
+        {STATES.map(st => {
+          const list = students.filter(s => s.stateIndex === st.i);
+          const bottleneck = (st.i === 7 || st.i === 5) && list.length >= 5;
+          return (
+            <div key={st.key} style={{ minWidth: 232, width: 232, flex: "none", background: "var(--surface-2)", borderRadius: 12, display: "flex", flexDirection: "column", maxHeight: 560 }}>
+              <div style={{ padding: "11px 13px", borderTop: "3px solid " + colColor[st.color], borderRadius: "12px 12px 0 0", background: "var(--white)" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <span className="mono" style={{ fontSize: 11, color: "var(--ink-4)" }}>{String(st.i + 1).padStart(2, "0")}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>{st.short}</span>
+                  </div>
+                  <span className="num" style={{ fontSize: 14, fontWeight: 700, color: colColor[st.color] }}>{list.length}</span>
+                </div>
+                {st.external && <div style={{ fontSize: 9.5, color: "var(--violet)", fontWeight: 600, marginTop: 3, letterSpacing: ".04em" }}>EXTERNAL · READ-ONLY</div>}
+                {bottleneck && <div className="badge badge-red" style={{ height: 16, fontSize: 9, marginTop: 5 }}>BOTTLENECK</div>}
+              </div>
+              <div className="scroll-y" style={{ padding: 8, display: "grid", gap: 7 }}>
+                {list.map(s => (
+                  <button 
+                    key={s.id} 
+                    onClick={() => onOpen("students", s.id)} 
+                    className="kanban-card"
+                    style={{ textAlign: "left", border: "1px solid var(--line)", background: "#fff", borderRadius: 9, padding: "9px 11px", cursor: "pointer", boxShadow: "var(--sh-sm)", transition: "all .12s" }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = "var(--navy-tint)"}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = "var(--line)"}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                      <Avatar name={s.name} role="Student" size={22} />
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</span>
+                      {s.flagged && <Icon name="flag" size={13} style={{ color: "var(--red)", flex: "none" }} />}
+                    </div>
+                    <div className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>{s.id} · {s.group}</div>
+                    {s.supervisorId && <div className="muted" style={{ fontSize: 10.5, marginTop: 3 }}>{(supById[s.supervisorId] || { name: s.supervisorId }).name}</div>}
+                    {(s.attempts || []).filter(a => a.status === "rejected").length > 0 && (
+                      <div className="badge badge-red" style={{ height: 15, fontSize: 9, marginTop: 5 }}>
+                        ×{(s.attempts || []).filter(a => a.status === "rejected").length} rejected
+                      </div>
+                    )}
+                  </button>
+                ))}
+                {!list.length && <div className="muted" style={{ fontSize: 11.5, textAlign: "center", padding: "14px 0" }}>—</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/* ---------------- FacStudents Component (search & filters list) ---------------- */
+interface FacStudentsProps {
+  focusStudent: string | null;
+  onClearFocus: () => void;
+}
+
+export const FacStudents: React.FC<FacStudentsProps> = ({ focusStudent, onClearFocus }) => {
+  const { students } = useAppContext();
+  const [open, setOpen] = useState<string | null>(focusStudent);
+  const [q, setQ] = useState("");
+  const [stage, setStage] = useState("all");
+  const [group, setGroup] = useState("all");
+  const [sup, setSup] = useState("all");
+
+  useEffect(() => { 
+    setOpen(focusStudent); 
+  }, [focusStudent]);
+
+  if (open) {
+    return (
+      <StudentRecord 
+        studentId={open} 
+        onBack={() => { setOpen(null); onClearFocus(); }} 
+      />
+    );
+  }
+
+  const list = students.filter(s => {
+    if (q && !(s.name.toLowerCase().includes(q.toLowerCase()) || s.id.toLowerCase().includes(q.toLowerCase()))) return false;
+    if (stage !== "all" && s.stateIndex !== +stage) return false;
+    if (group !== "all" && s.group !== group) return false;
+    if (sup !== "all" && s.supervisorId !== sup) return false;
+    return true;
+  });
+
+  const groups = Array.from(new Set(students.map(s => s.group))).sort();
+
+  return (
+    <div>
+      <SectionTitle 
+        sub={`${list.length} of ${students.length} students`} 
+        right={
+          <div style={{ position: "relative" }}>
+            <Icon name="search" size={16} style={{ position: "absolute", left: 11, top: 11, color: "var(--ink-4)" }} />
+            <input className="input" placeholder="Search name or ID…" value={q} onChange={e => setQ(e.target.value)} style={{ width: 240, paddingLeft: 34, height: 38 }} />
+          </div>
+        }
+      >
+        All Students
+      </SectionTitle>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <span className="eyebrow">Filter</span>
+        <select className="select" value={stage} onChange={e => setStage(e.target.value)} style={{ width: "auto", height: 34 }}>
+          <option value="all">All stages</option>
+          {STATES.map(s => <option key={s.key} value={s.i}>{s.i + 1}. {s.short}</option>)}
+        </select>
+        <select className="select" value={group} onChange={e => setGroup(e.target.value)} style={{ width: "auto", height: 34 }}>
+          <option value="all">All groups</option>
+          {groups.map(g => <option key={g} value={g}>{g}</option>)}
+        </select>
+        <select className="select" value={sup} onChange={e => setSup(e.target.value)} style={{ width: "auto", height: 34 }}>
+          <option value="all">All supervisors</option>
+          {SUPERVISORS.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        {(stage !== "all" || group !== "all" || sup !== "all" || q) && (
+          <button className="btn btn-quiet btn-sm" onClick={() => { setStage("all"); setGroup("all"); setSup("all"); setQ(""); }}>Clear</button>
+        )}
+      </div>
+
+      <div className="card" style={{ overflow: "hidden" }}>
+        <div style={{ overflowX: "auto" }}>
+          <table className="tbl">
+            <thead><tr><th>Student</th><th>ID</th><th>Group</th><th>Stage</th><th>Supervisor</th><th>Rework</th><th></th></tr></thead>
+            <tbody>
+              {list.map(s => (
+                <tr key={s.id} onClick={() => setOpen(s.id)} style={{ cursor: 'pointer' }}>
+                  <td><div style={{ display: "flex", alignItems: "center", gap: 9 }}><Avatar name={s.name} role="Student" size={26} /><span style={{ fontWeight: 600, color: "var(--ink)" }}>{s.name}</span>{s.flagged && <Icon name="flag" size={13} style={{ color: "var(--red)" }} />}</div></td>
+                  <td><span className="mono" style={{ fontSize: 12 }}>{s.id}</span></td>
+                  <td>{s.group}</td>
+                  <td><StateBadge stateIndex={s.stateIndex} short /></td>
+                  <td>{s.supervisorId ? (supById[s.supervisorId] || { name: s.supervisorId }).name : <span className="faint">—</span>}</td>
+                  <td>
+                    {(s.attempts || []).filter(a => a.status === "rejected").length > 0 ? (
+                      <Badge tone="red">×{(s.attempts || []).filter(a => a.status === "rejected").length}</Badge>
+                    ) : s.protoPres > 1 ? (
+                      <Badge tone="amber">proto ×{s.protoPres}</Badge>
+                    ) : (
+                      <span className="faint">—</span>
+                    )}
+                  </td>
+                  <td><Icon name="chevronRight" size={16} style={{ color: "var(--ink-4)" }} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!list.length && (
+            <EmptyState icon="search" title="No students match your filters" sub="Try clearing the search or filters to see the full cohort." action={<button className="btn btn-ghost" onClick={() => { setStage("all"); setGroup("all"); setSup("all"); setQ(""); }}>Clear all filters</button>} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ---------------- FacExaminers Component ---------------- */
+export const FacExaminers: React.FC = () => {
+  const { students, assignExaminer } = useAppContext();
+  const [assigned, setAssigned] = useState<{ [stuId: string]: string }>({});
+  const [sentTo, setSentTo] = useState<{ student: Student; examiner: Supervisor } | null>(null);
+
+  // students at book-submitted / pre-defense needing examiner
+  const needPre = students.filter(s => s.stateIndex === 8 || (s.stateIndex === 9 && !s.examinerPreId));
+  const sample = needPre.length ? needPre : students.filter(s => s.stateIndex >= 8).slice(0, 4);
+
+  function handleAssign(stu: Student, exId: string) {
+    const ex = supById[exId];
+    assignExaminer(stu.id, exId, 'predefense');
+    setAssigned(a => ({ ...a, [stu.id]: exId }));
+    setSentTo({ student: stu, examiner: ex as Supervisor });
+  }
+
+  return (
+    <div>
+      <SectionTitle sub="Assign the pre-defense examiner for each student. Forward-only, and never the student's own supervisor.">Assign Pre-Defense</SectionTitle>
+
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 16px", background: "var(--violet-bg)", border: "1px solid #D9CDEC", borderRadius: 10, marginBottom: 18, fontSize: 13 }}>
+        <Icon name="scale" size={17} style={{ color: "var(--violet)", flex: "none", marginTop: 1 }} />
+        <span style={{ color: "var(--ink-2)" }}>An examiner&apos;s assigned-students list is <strong>completely separate</strong> from the students they supervise. A person can be a supervisor for some and an examiner for others — the system never lets the two mix, and won&apos;t offer a student&apos;s own supervisor as their examiner.</span>
+      </div>
+
+      <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
+        <div className="card-hd"><h3>Awaiting examiner assignment</h3><Badge tone="amber">{sample.length} students</Badge></div>
+        <div style={{ overflowX: "auto" }}>
+          <table className="tbl">
+            <thead><tr><th>Student</th><th>Stage</th><th>Supervisor (excluded)</th><th>Assign examiner</th><th></th></tr></thead>
+            <tbody>
+              {sample.map(s => {
+                const sup = s.supervisorId ? supById[s.supervisorId] : null;
+                const eligible = SUPERVISORS.filter(x => x.examiner && x.id !== s.supervisorId);
+                const done = assigned[s.id];
+                return (
+                  <tr key={s.id} style={{ cursor: "default" }}>
+                    <td><div style={{ display: "flex", alignItems: "center", gap: 9 }}><Avatar name={s.name} role="Student" size={26} /><div><div style={{ fontWeight: 600, color: "var(--ink)" }}>{s.name}</div><div className="mono muted" style={{ fontSize: 10.5 }}>{s.id}</div></div></div></td>
+                    <td><StateBadge stateIndex={s.stateIndex} short /></td>
+                    <td>{sup ? <span style={{ color: "var(--ink-3)" }}>{sup.name}</span> : <span className="faint">—</span>}</td>
+                    <td>
+                      {done ? (
+                        <Badge tone="green" dot>{(supById[done] || { name: done }).name}</Badge>
+                      ) : (
+                        <select className="select" style={{ width: 190, height: 34 }} defaultValue="" onChange={e => e.target.value && handleAssign(s, e.target.value)}>
+                          <option value="" disabled>Choose examiner…</option>
+                          {eligible.map(x => <option key={x.id} value={x.id}>{x.name} — {x.title}</option>)}
+                        </select>
+                      )}
+                    </td>
+                    <td>{done && <span style={{ color: "var(--green-deep)", fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}><Icon name="check" size={14} /> Notified</span>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* both-roles example */}
+      <div className="card card-pad" style={{ marginBottom: 8 }}>
+        <h3 style={{ fontSize: 14, marginBottom: 4 }}>Example — one person, two non-overlapping lists</h3>
+        <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>Dr. Habimana is both a supervisor and an examiner. The lists never intersect.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
+            <div style={{ padding: "9px 13px", background: "var(--navy)", color: "#fff", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 7 }}><Icon name="users" size={14} /> Supervises ({students.filter(st => st.supervisorId === 'sup-hab').length})</div>
+            {students.filter(st => st.supervisorId === 'sup-hab').map(s => <div key={s.id} style={{ padding: "8px 13px", borderTop: "1px solid var(--line-soft)", fontSize: 12.5, display: "flex", justifyContent: "space-between" }}><span>{s.name}</span><span className="mono muted" style={{ fontSize: 10.5 }}>{s.id}</span></div>)}
+          </div>
+          <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
+            <div style={{ padding: "9px 13px", background: "var(--violet)", color: "#fff", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 7 }}><Icon name="scale" size={14} /> Examines ({students.filter(st => st.examinerPreId === 'sup-hab' || st.examinerDefId === 'sup-hab').length})</div>
+            {students.filter(st => st.examinerPreId === 'sup-hab' || st.examinerDefId === 'sup-hab').map(s => <div key={s.id} style={{ padding: "8px 13px", borderTop: "1px solid var(--line-soft)", fontSize: 12.5, display: "flex", justifyContent: "space-between" }}><span>{s.name}</span><span className="mono muted" style={{ fontSize: 10.5 }}>{s.id}</span></div>)}
+            {!students.filter(st => st.examinerPreId === 'sup-hab' || st.examinerDefId === 'sup-hab').length && <div className="muted" style={{ padding: "10px 13px", fontSize: 12 }}>—</div>}
+          </div>
+        </div>
+      </div>
+
+      <Modal open={!!sentTo} onClose={() => setSentTo(null)} width={540}>
+        {sentTo && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <Badge tone="green" dot>EXAMINER NOTIFIED BY EMAIL</Badge>
+              <button className="btn btn-ghost btn-sm" onClick={() => setSentTo(null)}><Icon name="x" size={14} /> Close</button>
+            </div>
+            <EmailPreview templateKey="examiner-assigned" student={sentTo.student} examiner={sentTo.examiner} status="sent" to={sentTo.examiner.email} toName={sentTo.examiner.name} ts={new Date().toISOString()} />
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+};
+
+/* ---------------- FacPending Component ---------------- */
+interface FacPendingProps {
+  onOpen: (page: string, id: string) => void;
+}
+
+export const FacPending: React.FC<FacPendingProps> = ({ onOpen }) => {
+  const { pendingItems } = useAppContext();
+  const [done, setDone] = useState<{ [id: string]: boolean }>({});
+  
+  const sevTone: { [key: string]: string } = { high: "red", med: "amber", low: "grey" };
+  const kindIcon: { [key: string]: string } = { "assign-examiner": "scale", "assign-supervisor": "users", "email": "mail", "stalled": "clock" };
+  
+  const open = pendingItems.filter(p => !done[p.id]);
+
+  return (
+    <div>
+      <SectionTitle sub="Assignments not yet made and emails not yet sent — keep the cohort moving.">Pending Coordination</SectionTitle>
+      
+      <div className="resp-cols-3" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 18 }}>
+        <MetricCard label="Open items" value={open.length} tone="red" icon="alert" />
+        <MetricCard label="Assignments pending" value={pendingItems.filter(p => p.kind.startsWith("assign")).length} tone="amber" icon="scale" />
+        <MetricCard label="Emails not sent" value={pendingItems.filter(p => p.kind === "email").length} tone="blue" icon="mail" />
+      </div>
+      
+      <div className="card" style={{ overflow: "hidden" }}>
+        <div className="card-hd"><h3>Needs your action</h3></div>
+        {pendingItems.map((p, i) => (
+          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 18px", borderTop: i ? "1px solid var(--line-soft)" : 0, opacity: done[p.id] ? .5 : 1 }}>
+            <span style={{ width: 34, height: 34, borderRadius: 9, background: "var(--surface-2)", color: "var(--ink-2)", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name={kindIcon[p.kind]} size={16} /></span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>{p.label}</span>
+                <Badge tone={sevTone[p.sev]}>{p.sev.toUpperCase()}</Badge>
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}><span className="mono">{p.student}</span> · {p.detail}</div>
+            </div>
+            <span className="mono muted" style={{ fontSize: 11.5, flex: "none" }}>{p.age}</span>
+            {done[p.id] ? (
+              <Badge tone="green" dot>Followed up</Badge>
+            ) : (
+              <div style={{ display: "flex", gap: 7 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => onOpen("students", p.student)}>Open</button>
+                <button className="btn btn-amber btn-sm" onClick={() => { 
+                  setDone(d => ({ ...d, [p.id]: true })); 
+                  notify("Nudge sent · " + p.student, "success"); 
+                }}>
+                  <Icon name="send" size={13} /> Nudge
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ---------------- FacProtoData Component ---------------- */
+export const FacProtoData: React.FC = () => {
+  const { students } = useAppContext();
+  const [query, setQuery] = useState("STU-2026-008");
+  const [id, setId] = useState<string | null>("STU-2026-008");
+  const [fetching, setFetching] = useState(false);
+  const [notFound, setNotFound] = useState<string | null>(null);
+
+  const stu = id ? students.find(s => s.id === id) : null;
+  const protoData: any = {
+    "STU-2026-008": { 
+      status: "Granted", 
+      presentations: 3, 
+      score: 78, 
+      board: "Prototype Review Board · Group A", 
+      history: [
+        { d: "08 Nov 2025", r: "Needs refinement", note: "Sensor data flow unclear; add error handling." }, 
+        { d: "14 Nov 2025", r: "Needs refinement", note: "UI incomplete; demonstrate alerts." }, 
+        { d: "18 Nov 2025", r: "Granted", note: "All gaps addressed." }
+      ] 
+    },
+  };
+
+  const d = stu && (protoData[stu.id] || { 
+    status: "Granted", 
+    presentations: stu.protoPres || 1, 
+    score: 72, 
+    board: "Prototype Review Board", 
+    history: [
+      { d: fmt(stu.enteredStageTs), r: "Granted", note: "Single presentation — granted." }
+    ] 
+  });
+
+  function fetchId(raw?: string) {
+    const q = (raw != null ? raw : query).trim().toUpperCase();
+    if (!q) return;
+    setFetching(true); 
+    setNotFound(null);
+    setTimeout(() => {
+      const found = students.find(s => s.id === q);
+      if (found && found.stateIndex >= 3) { 
+        setId(q); 
+        setNotFound(null); 
+      } else { 
+        setId(null); 
+        setNotFound(q); 
+      }
+      setFetching(false);
+    }, 550);
+  }
+
+  return (
+    <div>
+      <SectionTitle sub="Read-only prototype-review records, fetched by student ID from the external review system.">Prototype Data</SectionTitle>
+      
+      <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 16px", background: "#fff", border: "1px dashed var(--violet)", borderRadius: 10, marginBottom: 18, fontSize: 12.5 }}>
+        <Icon name="external" size={16} style={{ color: "var(--violet)", flex: "none" }} />
+        <span style={{ color: "var(--ink-2)" }}><strong>External system</strong> · prototype-review API <Badge tone="amber" style={{ marginLeft: 4 }}>NOT YET CONNECTED — STUB</Badge> Data below is illustrative sample data labelled <em>via API</em>.</span>
+      </div>
+
+      {/* fetch by ID */}
+      <div className="card card-pad" style={{ marginBottom: 18, maxWidth: 720 }}>
+        <label className="field-label">Look up a student record by ID</label>
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+          <div style={{ position: "relative", flex: "1 1 220px", minWidth: 0 }}>
+            <Icon name="search" size={16} style={{ position: "absolute", left: 12, top: 11, color: "var(--ink-4)" }} />
+            <input className="input mono" value={query} placeholder="e.g. STU-2026-008"
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") fetchId(); }}
+              style={{ paddingLeft: 36, textTransform: "uppercase" }} />
+          </div>
+          <button className="btn btn-primary" onClick={() => fetchId()} disabled={fetching || !query.trim()} style={{ flex: "none" }}>
+            {fetching ? <><Icon name="refresh" size={15} /> Fetching…</> : <><Icon name="external" size={15} /> Fetch record</>}
+          </button>
+        </div>
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>Type the full student ID and press Enter or Fetch. The system queries the external review API by ID.</div>
+      </div>
+
+      {fetching && (
+        <div className="card card-pad" style={{ maxWidth: 720 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--ink-3)", fontSize: 13 }}>
+            <Icon name="refresh" size={16} /> Querying prototype-review API for <span className="mono">{query.trim().toUpperCase()}</span>…
+          </div>
+        </div>
+      )}
+
+      {!fetching && notFound && (
+        <div style={{ maxWidth: 720 }}>
+          <EmptyState icon="search" title={"No prototype record for " + notFound} sub="Check the ID is correct and that the student has reached the Prototype Review stage. Only students at or beyond prototyping have records in the external system." />
+        </div>
+      )}
+
+      {!fetching && stu && d && (
+        <div className="card fade-in" style={{ overflow: "hidden", maxWidth: 720 }}>
+          <div style={{ padding: "16px 20px", background: "var(--violet-bg)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div><div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>{stu.name}</div><div className="mono muted" style={{ fontSize: 11.5 }}>{stu.id} · {d.board}</div></div>
+            <span className="badge badge-violet" style={{ height: 24 }}>via API</span>
+          </div>
+          <div className="card-pad" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, borderBottom: "1px solid var(--line-soft)" }}>
+            <div><div className="eyebrow">Status</div><div style={{ marginTop: 6 }}><Badge tone={d.status === "Granted" ? "green" : "amber"} dot>{d.status}</Badge></div></div>
+            <div><div className="eyebrow">Presentations</div><div className="num" style={{ fontSize: 22, fontWeight: 600, color: "var(--ink)", marginTop: 4 }}>{d.presentations}×</div></div>
+            <div><div className="eyebrow">Board score</div><div className="num" style={{ fontSize: 22, fontWeight: 600, color: "var(--ink)", marginTop: 4 }}>{d.score}<span style={{ fontSize: 13, color: "var(--ink-4)" }}>/100</span></div></div>
+          </div>
+          <div className="card-pad">
+            <div className="eyebrow" style={{ marginBottom: 10 }}>Presentation history</div>
+            {d.history.map((h: any, i: number) => (
+              <div key={i} style={{ display: "flex", gap: 12, padding: "9px 0", borderTop: i ? "1px solid var(--line-soft)" : 0 }}>
+                <span className="mono muted" style={{ fontSize: 11.5, width: 92, flex: "none" }}>{h.d}</span>
+                <Badge tone={h.r === "Granted" ? "green" : "red"} style={{ flex: "none", height: 18 }}>{h.r}</Badge>
+                <span className="muted" style={{ fontSize: 12.5 }}>{h.note}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
