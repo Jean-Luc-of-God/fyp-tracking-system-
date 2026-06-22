@@ -1,3 +1,12 @@
+# Environment — never commit
+.env
+
+# Java / Maven
+backend/target/
+*.class
+*.jar
+*.war
+
 # Logs
 logs
 *.log
