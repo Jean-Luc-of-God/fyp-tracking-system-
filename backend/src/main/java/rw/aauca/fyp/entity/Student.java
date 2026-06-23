@@ -52,6 +52,9 @@ public class Student {
     @Column(name = "proto_attempts", nullable = false)
     private int protoAttempts = 0;
 
+    @Column(name = "proposal_locked", nullable = false)
+    private boolean proposalLocked = false;
+
     @Column(nullable = false)
     private boolean flagged = false;
 

@@ -231,6 +231,14 @@ rw.aauca.fyp/
 | PATCH | /api/students/{id}/flag | HOD,FACILITATOR,SUPERADMIN | Flag student |
 | POST | /api/students/{id}/withdraw | HOD,FACILITATOR,SUPERADMIN | Withdraw student |
 
+### Proposals
+| Method | Path | Role | Description |
+|---|---|---|---|
+| POST | /api/proposals/{studentId}/submit | STUDENT,HOD,FACILITATOR,SUPERADMIN | Submit proposal (from PROTOTYPE_GRANTED or PROPOSAL_UNDER_REVIEW) |
+| POST | /api/proposals/{studentId}/review | HOD,FACILITATOR,SUPERADMIN | Accept or reject with reason; locks after 3 rejections |
+| POST | /api/proposals/{studentId}/unlock | HOD,SUPERADMIN | Unlock submission after 3 rejections |
+| GET | /api/proposals/{studentId}/history | all roles | Full proposal attempt history |
+
 ### Supervision
 | Method | Path | Role | Description |
 |---|---|---|---|
@@ -289,7 +297,7 @@ All tests pass: health, login, auth enforcement, user CRUD, student list, state 
 
 ### Phase 2 — Backend Features (IN PROGRESS)
 - **2a** Supervision module (slots + meetings) ✅ Built, pushed
-- **2b** Proposal module — submit, accept/reject with reason, 3-attempt limit
+- **2b** Proposal module — submit, accept/reject with reason, 3-attempt limit ✅ Built
 - **2c** Panel assignment — pre-defense/defense panels, no supervisor as own examiner
 - **2d** Email notifications — on state transitions + milestone reminders
 - **2e** Audit + notification log query endpoints

@@ -25,6 +25,7 @@ public class StudentResponse {
     private String supervisorName;
     private boolean bookSignedOff;
     private int protoAttempts;
+    private boolean proposalLocked;
     private boolean flagged;
     private String note;
 
@@ -45,6 +46,7 @@ public class StudentResponse {
                 .supervisorName(s.getSupervisor() != null ? s.getSupervisor().getFullName() : null)
                 .bookSignedOff(s.isBookSignedOff())
                 .protoAttempts(s.getProtoAttempts())
+                .proposalLocked(s.isProposalLocked())
                 .flagged(s.isFlagged())
                 .note(s.getNote())
                 .build();
