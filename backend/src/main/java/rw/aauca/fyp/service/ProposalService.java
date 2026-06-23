@@ -23,6 +23,7 @@ public class ProposalService {
     private final ProposalAttemptRepository proposalAttemptRepository;
     private final StudentStateService stateService;
     private final AuditService auditService;
+    private final EmailService emailService;
 
     private static final int MAX_REJECTIONS = 3;
 
@@ -57,6 +58,11 @@ public class ProposalService {
         auditService.log(actor, "PROPOSAL_SUBMITTED", "Student", studentId,
                 "Attempt " + nextAttempt, null);
 
+        // Notify supervisor (if assigned) that a proposal is awaiting review
+        if (student.getSupervisor() != null) {
+            emailService.notifyProposalSubmitted(student.getSupervisor(), student, nextAttempt);
+        }
+
         return proposalAttemptRepository.save(attempt);
     }
 
@@ -84,6 +90,7 @@ public class ProposalService {
             stateService.transition(student, StudentState.PROPOSAL_ACCEPTED, reviewer, "Proposal accepted");
             auditService.log(reviewer, "PROPOSAL_ACCEPTED", "Student", studentId,
                     "Attempt " + attempt.getAttemptNumber(), null);
+            emailService.notifyProposalAccepted(student.getUser(), student);
         } else {
             if (rejectionReason == null || rejectionReason.isBlank()) {
                 throw new IllegalArgumentException("A rejection reason is required");
@@ -94,13 +101,21 @@ public class ProposalService {
             int totalRejections = proposalAttemptRepository
                     .countByStudentIdAndStatus(studentId, ProposalStatus.REJECTED) + 1;
 
-            if (totalRejections >= MAX_REJECTIONS) {
+            boolean nowLocked = totalRejections >= MAX_REJECTIONS;
+            if (nowLocked) {
                 student.setProposalLocked(true);
                 studentRepository.save(student);
             }
 
+            int remaining = Math.max(0, MAX_REJECTIONS - totalRejections);
             auditService.log(reviewer, "PROPOSAL_REJECTED", "Student", studentId,
                     "Attempt " + attempt.getAttemptNumber() + " — " + rejectionReason, null);
+            emailService.notifyProposalRejected(student.getUser(), student,
+                    attempt.getAttemptNumber(), rejectionReason, remaining);
+
+            if (nowLocked) {
+                emailService.notifyProposalLocked(student.getUser(), student);
+            }
         }
 
         return proposalAttemptRepository.save(attempt);
@@ -117,8 +132,9 @@ public class ProposalService {
         student.setProposalLocked(false);
         auditService.log(hod, "PROPOSAL_UNLOCKED", "Student", studentId,
                 "HOD granted an additional proposal slot", null);
-
-        return studentRepository.save(student);
+        Student saved = studentRepository.save(student);
+        emailService.notifyProposalUnlocked(student.getUser(), saved);
+        return saved;
     }
 
     public List<ProposalAttempt> getHistory(UUID studentId) {

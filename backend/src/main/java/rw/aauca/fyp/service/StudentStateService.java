@@ -23,6 +23,7 @@ public class StudentStateService {
     private final StudentRepository studentRepository;
     private final StateTransitionRepository transitionRepository;
     private final AuditService auditService;
+    private final EmailService emailService;
 
     // Allowed transitions: from -> set of valid next states
     private static final Map<StudentState, Set<StudentState>> ALLOWED = Map.ofEntries(
@@ -76,6 +77,11 @@ public class StudentStateService {
 
         auditService.log(actor, "STATE_TRANSITION", "Student", student.getId(),
                 fromState + " -> " + toState, null);
+
+        // Notify the student of their new state (skip self-loop in PROTOTYPE_REVIEW)
+        if (student.getUser() != null && fromState != toState) {
+            emailService.notifyStateTransition(student.getUser(), student, toState.name(), note);
+        }
 
         return student;
     }

@@ -27,6 +27,7 @@ public class PanelService {
     private final UserRepository userRepository;
     private final StudentStateService stateService;
     private final AuditService auditService;
+    private final EmailService emailService;
 
     @Transactional
     public PanelAssignment assign(UUID studentId, UUID examinerId, PanelType panelType,
@@ -65,7 +66,10 @@ public class PanelService {
         auditService.log(actor, "PANEL_EXAMINER_ASSIGNED", "PanelAssignment", null,
                 examiner.getFullName() + " assigned to " + panelType + " for student " + student.getRegNumber(), null);
 
-        return panelRepository.save(assignment);
+        PanelAssignment saved = panelRepository.save(assignment);
+        String scheduledDisplay = scheduledAt != null ? scheduledAt.toString() : null;
+        emailService.notifyPanelAssigned(examiner, student, panelType.name(), scheduledDisplay);
+        return saved;
     }
 
     @Transactional
@@ -110,7 +114,12 @@ public class PanelService {
         auditService.log(actor, "PANEL_OUTCOME_RECORDED", "PanelAssignment", assignmentId,
                 assignment.getPanelType() + " outcome: " + outcome, null);
 
-        return panelRepository.save(assignment);
+        PanelAssignment result = panelRepository.save(assignment);
+        if (student.getUser() != null) {
+            emailService.notifyPanelOutcome(student.getUser(), student,
+                    assignment.getPanelType().name(), outcome.name(), note);
+        }
+        return result;
     }
 
     @Transactional
