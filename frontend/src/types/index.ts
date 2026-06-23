@@ -106,6 +106,9 @@ export interface Student {
   topic: string;
   stateIndex: number;
   supervisorId: string | null;
+  supervisorName: string | null;
+  supervisorEmail: string | null;
+  supervisorPhone: string | null;
   examinerPreId: string | null;
   examinerDefId: string | null;
   protoPres: number;

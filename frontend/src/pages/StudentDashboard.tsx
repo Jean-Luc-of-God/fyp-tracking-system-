@@ -1,470 +1,366 @@
 import React, { useState, useEffect } from 'react';
-import { useAppContext } from '../context/AppContext';
 import { studentsApi } from '../api/students';
-import { supervisionApi } from '../api/supervision';
-import { mapStudent, mapMeeting } from '../utils/mappers';
+import { proposalsApi } from '../api/proposals';
+import { mapStudent, mapProposalAttempt } from '../utils/mappers';
 import { getToken } from '../api/client';
-import { 
-  Icon, 
-  Badge, 
-  Avatar, 
-  StateTracker, 
-  EmptyState, 
-  SectionTitle, 
-  WhatsAppButton 
+import {
+  Icon,
+  Badge,
+  Avatar,
+  StateTracker,
+  EmptyState,
+  SectionTitle,
 } from '../components/SharedUI';
-import { LetterStatusBadge, Countdown, DocChip, notify } from '../components/LetterUI';
-import { Timeline } from '../components/Timeline';
-import { SupervisorAvailabilityPanel } from '../components/AvailabilityUI';
-import { 
-  bookDeadline,
-  daysLeft,
-  fmt, 
-  fmtFull, 
-  supById,
-  WA_GROUPS
-} from '../utils/fypData';
-import type { Student } from '../types';
+import { notify } from '../components/LetterUI';
+import type { Student, ProposalAttempt } from '../types';
+import { usersApi } from '../api/users';
+import { ChangePasswordCard } from './SupervisorDashboard';
 
-/* build the student's timeline from book registration + letter store */
-export function studentLetterEvents(stu: Student, letters: any): any[] {
-  const L = letters[stu.id] || { status: 'none' };
-  const ev: any[] = [
-    { 
-      st: 0, 
-      label: "Registered in cohort · Class of 2026", 
-      actor: { name: "Dr. Bizimungu", role: "HOD" }, 
-      ts: stu.bookRegisteredTs, 
-      email: "reg-confirmed", 
-      note: "Final Year Book registered — the 1-year deadline begins here" 
-    }
-  ];
+interface NavProps { onNav: (view: string) => void; }
 
-  if (L.requestedTs) {
-    ev.push({ 
-      st: 1, 
-      label: "Case-study letter requested by HOD", 
-      actor: { name: "Dr. Bizimungu", role: "HOD" }, 
-      ts: new Date(L.requestedTs).toISOString(), 
-      note: "Submission window opened — you can now send your letter" 
-    });
-  }
-  if (L.submittedTs) {
-    ev.push({ 
-      st: 1, 
-      label: "Case-study letter submitted", 
-      actor: { name: stu.name, role: "Student" }, 
-      ts: new Date(L.submittedTs).toISOString(), 
-      file: L.file || "case-letter.pdf" 
-    });
-  }
-  if (L.status === "rejected" && L.rejectedTs) {
-    ev.push({ 
-      st: 1, 
-      kind: "rework", 
-      label: "Letter returned for revision", 
-      actor: { name: "Dr. Bizimungu", role: "HOD" }, 
-      ts: new Date(L.rejectedTs).toISOString(), 
-      reasonHtml: L.rejectionReason 
-    });
-  }
-  if (L.status === "approved" && L.approvedTs) {
-    ev.push({ 
-      st: 2, 
-      label: "Case letter approved — advance to Prototyping", 
-      actor: { name: "Dr. Bizimungu", role: "HOD" }, 
-      ts: new Date(L.approvedTs).toISOString(), 
-      email: "case-approved", 
-      note: "Requirements document attached" 
-    });
-  }
+/* State machine metadata */
+const STATE_META: Record<string, { label: string; next: string; color: string; done: boolean }> = {
+  REGISTERED:            { label: 'Registered',               next: 'Wait for the HOD to request your case study letter.',             color: 'blue',   done: false },
+  CASE_LETTER_SUBMITTED: { label: 'Case Letter Submitted',    next: 'Your letter is under review by the HOD.',                         color: 'amber',  done: false },
+  CASE_LETTER_APPROVED:  { label: 'Case Letter Approved',     next: 'Present your prototype to the panel.',                            color: 'green',  done: false },
+  PROTOTYPE_REVIEW:      { label: 'Prototype Review',         next: 'Your prototype is being reviewed. Re-presentations may occur.',   color: 'amber',  done: false },
+  PROTOTYPE_GRANTED:     { label: 'Prototype Granted',        next: 'Submit your research proposal.',                                  color: 'green',  done: false },
+  PROPOSAL_UNDER_REVIEW: { label: 'Proposal Under Review',   next: 'Your proposal is being reviewed. Max 3 attempts.',                color: 'amber',  done: false },
+  PROPOSAL_ACCEPTED:     { label: 'Proposal Accepted',        next: 'Your supervisor will be assigned and supervision begins.',        color: 'green',  done: false },
+  SUPERVISION:           { label: 'Under Supervision',        next: 'Attend scheduled meetings and work on your final year book.',     color: 'navy',   done: false },
+  BOOK_SUBMITTED:        { label: 'Book Submitted',           next: 'Your book is submitted. Await pre-defense scheduling.',          color: 'violet', done: false },
+  PRE_DEFENSE:           { label: 'Pre-Defense',              next: 'Prepare for your pre-defense presentation.',                     color: 'violet', done: false },
+  DEFENSE:               { label: 'Final Defense',            next: 'Prepare for your final defense.',                                color: 'violet', done: false },
+  COMPLETED:             { label: 'Completed',                next: 'Congratulations! Your FYP is complete.',                         color: 'green',  done: true  },
+  WITHDRAWN:             { label: 'Withdrawn',                next: 'Your registration has been withdrawn. Contact your HOD.',        color: 'red',    done: true  },
+};
 
-  return ev.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
-}
-
-interface NavProps {
-  onNav: (view: string) => void;
-}
-
-/* Hook: load the logged-in student's own record from the API */
+/* Hook: loads the real student record for the logged-in user */
 function useMyStudent() {
-  const { students, activeUserId } = useAppContext();
-  const [apiStu, setApiStu] = useState<import('../types').Student | null>(null);
+  const [student, setStudent] = useState<Student | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) return;
-    studentsApi.me().then(r => setApiStu(mapStudent(r))).catch(() => {});
-  }, [activeUserId]);
+    if (!getToken()) { setLoaded(true); return; }
+    setLoaded(false);
+    studentsApi.me()
+      .then(r => setStudent(mapStudent(r)))
+      .catch(() => setStudent(null))
+      .finally(() => setLoaded(true));
+  }, []);
 
-  // Prefer API result; fall back to matching by userId in the preloaded list
-  return apiStu
-    ?? students.find(s => s.userId === activeUserId)
-    ?? students.find(s => s.id === activeUserId)
-    ?? null;
+  return { student, loaded };
 }
 
-/* ---------------- Student Dashboard Component ---------------- */
+const NO_PROFILE = (
+  <EmptyState
+    icon="users"
+    title="No student profile found"
+    sub="Your account exists but has no student record. Ask your admin to import students via Excel. Your default password will be your registration number."
+  />
+);
+
+/* ─── StudentDashboard ─── */
 export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
-  const { letters } = useAppContext();
-  const stu = useMyStudent();
+  const { student: stu, loaded } = useMyStudent();
+  const [proposals, setProposals] = useState<ProposalAttempt[]>([]);
 
-  if (!stu) return <EmptyState title="Student not found" sub="Could not find student details." />;
+  useEffect(() => {
+    if (!stu) return;
+    proposalsApi.history(stu.id).then(r => setProposals(r.map(mapProposalAttempt))).catch(() => {});
+  }, [stu?.id]);
 
-  const L = letters[stu.id] || { status: 'none' };
-  const events = studentLetterEvents(stu, letters);
-  const deadline = bookDeadline(stu);
-  const bookDays = daysLeft(deadline);
+  if (!loaded) return <EmptyState title="Loading your profile…" sub="" />;
+  if (!stu) return NO_PROFILE;
+
+  const meta = STATE_META[stu.stateIndex >= 12 ? 'WITHDRAWN' : Object.keys(STATE_META)[stu.stateIndex]] ?? STATE_META['REGISTERED'];
+  const stateName = Object.keys(STATE_META)[stu.stateIndex] ?? 'REGISTERED';
+  const currentMeta = STATE_META[stateName] ?? STATE_META['REGISTERED'];
 
   return (
     <div>
-      <SectionTitle 
-        style={{ justifyContent: 'space-between', alignItems: 'center' }}
-        badge=""
-      >
-        Welcome back, {stu.name.split(" ")[1] || stu.name}
-      </SectionTitle>
-      
-      <p className="muted" style={{ fontSize: 13, margin: '0 0 16px', maxWidth: 600 }}>
-        {stu.id} · case study: {stu.org} · {stu.group}
+      <SectionTitle>Welcome back, {stu.name.split(' ').slice(-1)[0]}</SectionTitle>
+      <p className="muted" style={{ fontSize: 13, margin: '0 0 20px' }}>
+        {stu.reg} · {stu.email}
       </p>
 
-      {/* tracker */}
+      {/* State tracker */}
       <div className="card" style={{ marginBottom: 18 }}>
-        <div className="card-hd"><h3>Your journey</h3><span className="muted" style={{ fontSize: 12 }}>state {stu.stateIndex + 1} of 11</span></div>
+        <div className="card-hd">
+          <h3>Your progress</h3>
+          <Badge tone={currentMeta.color as any}>{currentMeta.label}</Badge>
+        </div>
         <div className="card-pad" style={{ paddingTop: 10 }}>
-          <StateTracker stateIndex={stu.stateIndex} attempts={stu.attempts} protoPres={stu.protoPres} compact />
+          <StateTracker stateIndex={stu.stateIndex} attempts={proposals} protoPres={stu.protoPres} compact />
         </div>
       </div>
 
-      {/* PHASE HERO */}
-      {L.status === "approved" ? (
-        <PrototypingWelcome stu={stu} L={L} />
-      ) : (
-        <LetterPhaseHero stu={stu} L={L} onNav={onNav} />
+      {/* Next action */}
+      <div className="card card-pad" style={{ marginBottom: 18, borderLeft: '4px solid var(--amber)', background: 'var(--amber-bg)' }}>
+        <div className="eyebrow" style={{ marginBottom: 6 }}>What happens next</div>
+        <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.6 }}>{currentMeta.next}</p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+        {/* Student details */}
+        <div className="card card-pad">
+          <div className="eyebrow" style={{ marginBottom: 12 }}>Your details</div>
+          <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+            <tbody>
+              {[
+                ['Registration', stu.reg],
+                ['Group', stu.group || '—'],
+                ['Organisation', stu.org || '—'],
+                ['Project topic', stu.topic || 'Not set yet'],
+                ['Prototype attempts', String(stu.protoPres)],
+                ['Book signed off', stu.bookSignedOff ? 'Yes' : 'No'],
+              ].map(([label, value]) => (
+                <tr key={label} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                  <td style={{ padding: '7px 0', color: 'var(--ink-3)', width: '45%' }}>{label}</td>
+                  <td style={{ padding: '7px 0', fontWeight: 500, color: 'var(--ink)' }}>{value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Supervisor */}
+        <div className="card card-pad">
+          <div className="eyebrow" style={{ marginBottom: 12 }}>Supervisor</div>
+          {stu.supervisorName ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Avatar name={stu.supervisorName} role="Supervisor" size={40} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>{stu.supervisorName}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>Your supervisor</div>
+                </div>
+              </div>
+              {stu.supervisorEmail && (
+                <div style={{ fontSize: 13, color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="mail" size={14} style={{ color: 'var(--ink-3)' }} />
+                  <span className="mono">{stu.supervisorEmail}</span>
+                </div>
+              )}
+              {stu.supervisorPhone && (
+                <div style={{ fontSize: 13, color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon name="phone" size={14} style={{ color: 'var(--ink-3)' }} />
+                  <span>{stu.supervisorPhone}</span>
+                </div>
+              )}
+              <button className="btn btn-quiet btn-sm" onClick={() => onNav('supervisor')} style={{ marginTop: 4 }}>
+                View availability <Icon name="arrowRight" size={13} />
+              </button>
+            </div>
+          ) : (
+            <div className="muted" style={{ fontSize: 13 }}>No supervisor assigned yet.</div>
+          )}
+        </div>
+      </div>
+
+      {/* Proposal attempts */}
+      {proposals.length > 0 && (
+        <div className="card" style={{ marginTop: 18 }}>
+          <div className="card-hd"><h3>Proposal history</h3><Badge tone="navy">{proposals.length} / 3</Badge></div>
+          <div className="card-pad">
+            {proposals.map(p => (
+              <div key={p.n} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderBottom: '1px solid var(--line-soft)' }}>
+                <Badge tone={p.status === 'accepted' ? 'green' : p.status === 'rejected' ? 'red' : 'amber'}>
+                  Attempt {p.n}
+                </Badge>
+                <span style={{ flex: 1, fontSize: 13, color: 'var(--ink-2)' }}>{p.reason || 'No note'}</span>
+                <Badge tone={p.status === 'accepted' ? 'green' : p.status === 'rejected' ? 'red' : 'amber'}>
+                  {p.status}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
-
-      <div className="resp-stack" style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 18, alignItems: "start", marginTop: 18 }}>
-        {/* recent activity */}
-        <div className="card">
-          <div className="card-hd">
-            <h3>Recent activity</h3>
-            <button className="btn btn-quiet btn-sm" onClick={() => onNav("timeline")}>
-              Full timeline <Icon name="arrowRight" size={13} />
-            </button>
-          </div>
-          <div className="card-pad"><Timeline events={events} /></div>
-        </div>
-
-        {/* book deadline + case study */}
-        <div style={{ display: "grid", gap: 18 }}>
-          <div className="card card-pad">
-            <div className="eyebrow" style={{ marginBottom: 10 }}>Final Year Book deadline</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-              <div style={{ 
-                width: 50, 
-                height: 50, 
-                borderRadius: 11, 
-                background: bookDays < 45 ? "var(--red-bg)" : "var(--surface-2)", 
-                color: bookDays < 45 ? "var(--red)" : "var(--navy)", 
-                display: "flex", 
-                flexDirection: "column", 
-                alignItems: "center", 
-                justifyContent: "center", 
-                flex: "none" 
-              }}>
-                <span className="num" style={{ fontSize: 17, fontWeight: 700, lineHeight: 1 }}>{bookDays}</span>
-                <span style={{ fontSize: 8, textTransform: "uppercase" }}>days</span>
-              </div>
-              <div>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>Due {fmt(deadline)}</div>
-                <div className="muted" style={{ fontSize: 12 }}>Book registered {fmt(stu.bookRegisteredTs)} · 1-year limit</div>
-              </div>
-            </div>
-          </div>
-          <div className="card card-pad">
-            <div className="eyebrow" style={{ marginBottom: 10 }}>Case-study organisation</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-              <span style={{ width: 40, height: 40, borderRadius: 9, background: "var(--blue-bg)", color: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="building" size={19} /></span>
-              <div><div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{stu.org}</div><div className="muted" style={{ fontSize: 12 }}>{stu.topic}</div></div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
 
-/* ---------------- Letter Phase Hero Component ---------------- */
-interface LetterHeroProps {
-  stu: Student;
-  L: any;
-  onNav: (view: string) => void;
-}
-
-const LetterPhaseHero: React.FC<LetterHeroProps> = ({ stu, L, onNav }) => {
-  const requested = L.status === "requested" || L.status === "rejected";
-  const canSend = requested && !!(L.deadlineTs && Date.now() < L.deadlineTs);
-
-
-  if (!requested && L.status !== "submitted") {
-    return (
-      <div className="card card-pad" style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <span style={{ width: 44, height: 44, borderRadius: 10, background: "var(--surface-2)", color: "var(--ink-3)", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="clock" size={22} /></span>
-        <div><div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>No letter requested yet</div><div className="muted" style={{ fontSize: 13 }}>The HOD will request your case-study letter when your batch opens. You&apos;ll be notified by email and a Send button will appear here.</div></div>
-      </div>
-    );
-  }
-
-  if (L.status === "submitted") {
-    return (
-      <div className="card card-pad" style={{ background: "var(--blue-bg)", borderColor: "#C7DCF1", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <span style={{ width: 46, height: 46, borderRadius: 11, background: "var(--blue)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="clock" size={22} /></span>
-        <div style={{ flex: 1, minWidth: 220 }}><div style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>Letter submitted — awaiting HOD review</div><div className="muted" style={{ fontSize: 13 }}>You sent <span className="mono">{L.file}</span> on {fmtFull(L.submittedTs)}. You&apos;ll be notified when it&apos;s approved or returned.</div></div>
-        <button className="btn btn-ghost" onClick={() => onNav("case")}>View submission</button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="card" style={{ overflow: "hidden", borderColor: L.status === "rejected" ? "#E6B7AE" : "var(--amber)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 20px", background: L.status === "rejected" ? "var(--red-bg)" : "var(--amber-bg)" }}>
-        <Icon name={L.status === "rejected" ? "refresh" : "send"} size={18} style={{ color: L.status === "rejected" ? "var(--red)" : "var(--amber-deep)" }} />
-        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{L.status === "rejected" ? "Your letter was returned — please revise & resend" : "The HOD has requested your case-study letter"}</span>
-        <span className="badge badge-grey mono" style={{ marginLeft: "auto", height: 18 }}>Batch {L.batch}</span>
-      </div>
-      <div className="card-pad" style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 20, alignItems: "center" }}>
-        <div>
-          {L.status === "rejected" && L.rejectionReason && (
-            <div style={{ marginBottom: 14, padding: "12px 14px", background: "var(--red-bg)", borderLeft: "3px solid var(--red)", borderRadius: 8 }}>
-              <div className="eyebrow" style={{ color: "var(--red-deep)", marginBottom: 5 }}>Reason from HOD</div>
-              <div className="rt-content" style={{ fontSize: 13, color: "var(--red-deep)" }} dangerouslySetInnerHTML={{ __html: L.rejectionReason }} />
-            </div>
-          )}
-          <div className="eyebrow" style={{ marginBottom: 8 }}>{canSend ? "Time remaining to send your letter" : "Submission window"}</div>
-          {canSend ? (
-            <Countdown to={L.deadlineTs} size="lg" />
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Badge tone="red" dot>Window closed</Badge>
-              <span className="muted" style={{ fontSize: 12.5 }}>The button is hidden until the HOD requests your letter again.</span>
-            </div>
-          )}
-          <div className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>Window closes {fmtFull(L.deadlineTs)} · case study: <strong style={{ color: "var(--ink-2)" }}>{stu.org}</strong></div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 9, minWidth: 190 }}>
-          {canSend ? (
-            <button className="btn btn-amber btn-lg" onClick={() => onNav("case")}>
-              <Icon name="send" size={16} /> {L.status === "rejected" ? "Revise & resend" : "Send case letter"}
-            </button>
-          ) : (
-            <button className="btn btn-ghost btn-lg" disabled><Icon name="x" size={15} /> Window closed</button>
-          )}
-          <button className="btn btn-quiet btn-sm" onClick={() => onNav("case")}>Open letter page</button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ---------------- Prototyping Welcome Component ---------------- */
-interface PrototypingWelcomeProps {
-  stu: Student;
-  L: any;
-}
-
-const PrototypingWelcome: React.FC<PrototypingWelcomeProps> = ({ stu, L }) => {
-  return (
-    <div className="card" style={{ overflow: "hidden", border: 0 }}>
-      <div style={{ background: "linear-gradient(115deg, var(--navy) 0%, var(--navy-700) 100%)", color: "#fff", padding: "26px 28px", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -60, right: -40, width: 200, height: 200, borderRadius: "50%", border: "1px solid rgba(255,255,255,.08)" }} />
-        <div className="badge badge-solid-amber" style={{ marginBottom: 14 }}><Icon name="sparkle" size={13} /> PROJECT APPROVED</div>
-        <h2 style={{ color: "#fff", fontSize: 25, letterSpacing: "-.02em" }}>Welcome to the Prototyping phase, {stu.name.split(" ")[1] || stu.name}!</h2>
-        <p style={{ color: "var(--on-navy-dim)", fontSize: 14.5, marginTop: 9, lineHeight: 1.6, maxWidth: 560 }}>Your case-study letter for <strong style={{ color: "#fff" }}>{stu.org}</strong> has been approved by the HOD. The prototyping phase is handled separately — review the requirements below and begin building your prototype for review.</p>
-        <div style={{ display: "flex", gap: 12, marginTop: 18, flexWrap: "wrap" }}>
-          <button className="btn btn-amber btn-lg"><Icon name="external" size={16} /> Go to Prototyping workspace</button>
-          <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: "var(--on-navy-dim)" }}><Icon name="check" size={15} style={{ color: "var(--amber)" }} /> Approved {fmt(L.approvedTs)}</span>
-        </div>
-      </div>
-      <div className="card-pad" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <div>
-          <div className="eyebrow" style={{ marginBottom: 9 }}>Requirements from the HOD</div>
-          <DocChip doc={L.requirements || { name: "FYP_Prototype_Requirements_2026.docx", size: "24 KB", pages: 3 }} action="Download" />
-        </div>
-        <div>
-          <div className="eyebrow" style={{ marginBottom: 9 }}>What happens next</div>
-          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--ink-2)", lineHeight: 1.7 }}>
-            <li>Build your prototype to the requirements</li>
-            <li>Present to the Prototype Review Board</li>
-            <li>Refine and re-present until granted</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ---------------- Student Case Study Letter Page Component ---------------- */
+/* ─── StudentCase ─── */
 export const StudentCase: React.FC = () => {
-  const { letters, submitCaseLetter } = useAppContext();
-  const stu = useMyStudent();
-  const [picked, setPicked] = useState(false);
+  const { student: stu, loaded } = useMyStudent();
 
-  if (!stu) return <EmptyState title="Student not found" sub="Could not find student details." />;
+  if (!loaded) return <EmptyState title="Loading…" sub="" />;
+  if (!stu) return NO_PROFILE;
 
-  const L = letters[stu.id] || { status: 'none' };
-  const canSend = (L.status === "requested" || L.status === "rejected") && !!(L.deadlineTs && Date.now() < L.deadlineTs);
-  const events = studentLetterEvents(stu, letters);
-
-  function send() {
-    if (stu) {
-      submitCaseLetter(stu.id, "case-letter-" + stu.org.toLowerCase().replace(/[^a-z]/g, "").slice(0, 10) + ".pdf");
-      setPicked(false);
-      notify("Case letter sent to the HOD", "success");
-    }
-  }
-
+  const stateIndex = stu.stateIndex;
 
   return (
     <div>
-      <SectionTitle 
-        style={{ justifyContent: 'space-between', alignItems: 'center' }}
-        right={<LetterStatusBadge status={L.status} expired={!!(L.deadlineTs && Date.now() > L.deadlineTs)} />}
-      >
-        Case-Study Letter
-      </SectionTitle>
+      <SectionTitle sub="Your case study letter tracks the first stage of your FYP registration.">Case-Study Letter</SectionTitle>
 
-      <div className="resp-stack" style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 18, alignItems: "start", maxWidth: 980 }}>
-        <div style={{ display: "grid", gap: 18 }}>
-          {/* request / countdown banner */}
-          {(L.status === "requested" || L.status === "rejected") && (
-            <div className="card card-pad" style={{ background: canSend ? "var(--amber-bg)" : "var(--surface)", borderColor: canSend ? "var(--amber)" : "var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
-              <div>
-                <div className="eyebrow" style={{ marginBottom: 6 }}>{canSend ? "Time remaining" : "Window"}</div>
-                {canSend ? <Countdown to={L.deadlineTs || 0} size="lg" /> : <Badge tone="red" dot>Window closed — wait for HOD to re-request</Badge>}
-              </div>
-              <Icon name={canSend ? "send" : "clock"} size={28} style={{ color: canSend ? "var(--amber-deep)" : "var(--ink-4)" }} />
+      <div className="card card-pad" style={{ maxWidth: 640 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+          <span style={{ width: 48, height: 48, borderRadius: 12, background: stateIndex >= 2 ? 'var(--green-bg)' : 'var(--blue-bg)', color: stateIndex >= 2 ? 'var(--green)' : 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+            <Icon name={stateIndex >= 2 ? 'checkCircle' : 'file'} size={24} />
+          </span>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)' }}>
+              {stateIndex === 0 && 'Awaiting letter request from HOD'}
+              {stateIndex === 1 && 'Letter submitted — under review'}
+              {stateIndex >= 2 && 'Case letter approved ✓'}
             </div>
-          )}
-
-          {/* rejection reason */}
-          {L.status === "rejected" && L.rejectionReason && (
-            <div className="card" style={{ overflow: "hidden", borderColor: "#E6B7AE" }}>
-              <div className="card-hd" style={{ background: "var(--red-bg)" }}><h3 style={{ color: "var(--red-deep)", display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="refresh" size={15} />Why your letter was returned</h3></div>
-              <div className="card-pad"><div className="rt-content" style={{ fontSize: 13.5, color: "var(--ink-2)" }} dangerouslySetInnerHTML={{ __html: L.rejectionReason }} /></div>
+            <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
+              {stateIndex === 0 && 'The HOD will open a submission window for you. Check back soon.'}
+              {stateIndex === 1 && 'Your letter has been received by the HOD and is being reviewed.'}
+              {stateIndex >= 2 && 'Your case study letter was approved. You have advanced to the next stage.'}
             </div>
-          )}
-
-          {/* upload / submission state */}
-          <div className="card card-pad">
-            <div className="eyebrow" style={{ marginBottom: 12 }}>{L.status === "submitted" || L.status === "approved" ? "Submitted document" : "Your letter"}</div>
-
-            {L.status === "approved" ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 13, padding: "14px 16px", background: "var(--green-bg)", border: "1px solid #BCE2CC", borderRadius: 10 }}>
-                <span style={{ width: 42, height: 42, borderRadius: 9, background: "var(--green)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="checkCircle" size={21} /></span>
-                <div style={{ flex: 1 }}><div style={{ fontWeight: 600, color: "var(--ink)", fontSize: 13.5 }}>{L.file}</div><div className="mono muted" style={{ fontSize: 11 }}>Approved {fmtFull(new Date(L.approvedTs || Date.now()).toISOString())}</div></div>
-                <Badge tone="green" dot>Approved</Badge>
-              </div>
-            ) : L.status === "submitted" ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 13, padding: "14px 16px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10 }}>
-                <span style={{ width: 42, height: 42, borderRadius: 9, background: "var(--blue-bg)", color: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name="file" size={20} /></span>
-                <div style={{ flex: 1 }}><div style={{ fontWeight: 600, color: "var(--ink)", fontSize: 13.5 }}>{L.file}</div><div className="mono muted" style={{ fontSize: 11 }}>Sent {fmtFull(new Date(L.submittedTs || Date.now()).toISOString())} · awaiting review</div></div>
-                <Badge tone="blue" dot>In review</Badge>
-              </div>
-            ) : canSend ? (
-              <>
-                <div style={{ padding: "20px", border: "2px dashed " + (picked ? "var(--amber)" : "var(--line)"), borderRadius: 10, textAlign: "center", background: picked ? "var(--amber-bg)" : "transparent", cursor: "pointer" }} onClick={() => setPicked(true)}>
-                  <Icon name={picked ? "file" : "upload"} size={24} style={{ color: picked ? "var(--amber-deep)" : "var(--ink-4)" }} />
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink-2)", marginTop: 7 }}>{picked ? "case-letter-" + stu.org.toLowerCase().replace(/[^a-z]/g, "").slice(0, 10) + ".pdf" : "Choose your signed case-study letter (PDF)"}</div>
-                  <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{picked ? "Ready to send" : "Drag a PDF here or click to browse"}</div>
-                </div>
-                <button className="btn btn-amber btn-lg" disabled={!picked} onClick={send} style={{ width: "100%", marginTop: 12 }}><Icon name="send" size={16} /> Send case letter to HOD</button>
-              </>
-            ) : (
-              <div style={{ padding: "18px", textAlign: "center", border: "1px dashed var(--line)", borderRadius: 10 }}>
-                <Icon name="clock" size={22} style={{ color: "var(--ink-4)" }} />
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink-2)", marginTop: 7 }}>The send window is closed</div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>Your Send button will reappear here once the HOD requests your letter again.</div>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* status timeline */}
-        <div className="card">
-          <div className="card-hd"><h3>Status</h3></div>
-          <div className="card-pad"><Timeline events={events} /></div>
+        <div style={{ padding: '11px 14px', background: 'var(--surface)', borderRadius: 9, fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.6 }}>
+          <Icon name="info" size={14} style={{ verticalAlign: -2, marginRight: 6 }} />
+          Letter submission and review is managed by your HOD. You will be notified when action is required.
         </div>
       </div>
     </div>
   );
 };
 
-/* ---------------- Student Supervisor Page Component ---------------- */
+/* ─── StudentSupervisor ─── */
 export const StudentSupervisor: React.FC = () => {
-  const stu = useMyStudent();
+  const { student: stu, loaded } = useMyStudent();
 
-  if (!stu) return <EmptyState title="Student not found" sub="Could not find student details." />;
+  if (!loaded) return <EmptyState title="Loading…" sub="" />;
+  if (!stu) return NO_PROFILE;
 
-  const sup = stu.supervisorId ? supById[stu.supervisorId] : null;
-  const wa = stu.supervisorId ? WA_GROUPS[stu.supervisorId] : null;
-
-  if (!sup || !stu.supervisorId) {
+  if (!stu.supervisorName) {
     return (
       <div>
-        <SectionTitle sub="Where to find your supervisor and the sessions they run.">My Supervisor</SectionTitle>
-        <EmptyState icon="users" title="No supervisor assigned yet" sub="Once a supervisor is assigned to you, their weekly office hours, location and group sessions will appear here." />
+        <SectionTitle sub="Your assigned supervisor's contact details and availability.">My Supervisor</SectionTitle>
+        <EmptyState icon="users" title="No supervisor assigned yet" sub="Once a supervisor is assigned to you by the HOD or Facilitator, their details will appear here." />
       </div>
     );
   }
 
   return (
     <div>
-      <SectionTitle 
-        sub="Your assigned supervisor's availability and group sessions — so you know exactly when and where to find them."
-        right={wa && wa.length ? <WhatsAppButton team={wa[0].team.replace("FYP 2026 · ", "")} link={wa[0].link} sm /> : undefined}
-      >
-        My Supervisor
-      </SectionTitle>
+      <SectionTitle sub="Your assigned supervisor's contact details and availability.">My Supervisor</SectionTitle>
 
-      <div className="card card-pad" style={{ marginBottom: 18, display: "flex", alignItems: "center", gap: 14 }}>
-        <Avatar name={sup.name} role="Supervisor" size={48} />
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: "var(--ink)" }}>{sup.full}</div>
-          <div className="muted" style={{ fontSize: 12.5 }}>{sup.title}</div>
+      <div className="card card-pad" style={{ maxWidth: 560, marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+          <Avatar name={stu.supervisorName} role="Supervisor" size={52} />
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--ink)' }}>{stu.supervisorName}</div>
+            <div className="muted" style={{ fontSize: 12.5 }}>Your FYP Supervisor</div>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 18, fontSize: 12.5 }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="mail" size={14} style={{ color: "var(--ink-3)" }} /><span className="mono">{sup.email}</span></span>
+
+        <div style={{ display: 'grid', gap: 10 }}>
+          {stu.supervisorEmail && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5 }}>
+              <Icon name="mail" size={16} style={{ color: 'var(--ink-3)', flex: 'none' }} />
+              <span className="mono">{stu.supervisorEmail}</span>
+            </div>
+          )}
+          {stu.supervisorPhone && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5 }}>
+              <Icon name="phone" size={16} style={{ color: 'var(--ink-3)', flex: 'none' }} />
+              <span>{stu.supervisorPhone}</span>
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 18, padding: '11px 14px', background: 'var(--blue-bg)', border: '1px solid #C7DCF1', borderRadius: 9, fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.6 }}>
+          <Icon name="info" size={14} style={{ verticalAlign: -2, marginRight: 6, color: 'var(--blue)' }} />
+          Contact your supervisor via email to schedule meetings. All meetings are logged in the system.
         </div>
       </div>
-
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 15px", background: "var(--blue-bg)", border: "1px solid #C7DCF1", borderRadius: 10, marginBottom: 16, fontSize: 12.5 }}>
-        <Icon name="eye" size={15} style={{ color: "var(--blue)", flex: "none", marginTop: 1 }} />
-        <span style={{ color: "var(--ink-2)" }}>You can only see <strong>your assigned supervisor&apos;s</strong> availability. Group sessions are run for all of their students — make sure you attend; attendance is recorded.</span>
-      </div>
-
-      <SupervisorAvailabilityPanel supId={stu.supervisorId} viewer="student" studentId={stu.id} />
     </div>
   );
 };
 
-/* ---------------- Student Timeline Page Component ---------------- */
+/* ─── StudentTimeline ─── */
+const STAGE_LABELS = [
+  'Registered in cohort',
+  'Case study letter submitted',
+  'Case study letter approved',
+  'Prototype presented to panel',
+  'Prototype approved',
+  'Proposal submitted',
+  'Proposal accepted',
+  'Active supervision',
+  'Final book submitted',
+  'Pre-defense',
+  'Final defense',
+  'Completed',
+];
+
 export const StudentTimeline: React.FC = () => {
-  const { letters } = useAppContext();
-  const stu = useMyStudent();
+  const { student: stu, loaded } = useMyStudent();
+  const [proposals, setProposals] = useState<ProposalAttempt[]>([]);
 
-  if (!stu) return <EmptyState title="Student not found" sub="Could not find student details." />;
+  useEffect(() => {
+    if (!stu) return;
+    proposalsApi.history(stu.id).then(r => setProposals(r.map(mapProposalAttempt))).catch(() => {});
+  }, [stu?.id]);
 
-  const events = studentLetterEvents(stu, letters);
+  if (!loaded) return <EmptyState title="Loading…" sub="" />;
+  if (!stu) return NO_PROFILE;
+
+  const reached = stu.stateIndex;
 
   return (
     <div>
-      <SectionTitle sub="Your complete, timestamped FYP history — every step, who acted, and the emails sent.">My Timeline</SectionTitle>
+      <SectionTitle sub="Every milestone in your FYP journey — where you've been and where you're going.">My Timeline</SectionTitle>
+
       <div className="card" style={{ marginBottom: 18 }}>
-        <div className="card-pad" style={{ paddingTop: 12 }}><StateTracker stateIndex={stu.stateIndex} attempts={stu.attempts} protoPres={stu.protoPres} /></div>
+        <div className="card-pad" style={{ paddingTop: 10 }}>
+          <StateTracker stateIndex={stu.stateIndex} attempts={proposals} protoPres={stu.protoPres} />
+        </div>
       </div>
-      <div className="card" style={{ maxWidth: 760 }}>
-        <div className="card-hd"><h3><Icon name="history" size={16} style={{ verticalAlign: -3, marginRight: 7, color: "var(--navy)" }} />Full history</h3><span className="muted" style={{ fontSize: 12 }}>{events.length} events</span></div>
-        <div className="card-pad"><Timeline events={events} /></div>
+
+      <div className="card" style={{ maxWidth: 680 }}>
+        <div className="card-hd"><h3>Milestone history</h3></div>
+        <div className="card-pad" style={{ display: 'grid', gap: 0 }}>
+          {STAGE_LABELS.map((label, i) => {
+            const done = i < reached;
+            const current = i === reached;
+            const future = i > reached;
+            return (
+              <div key={i} style={{ display: 'flex', gap: 16, paddingBottom: i < STAGE_LABELS.length - 1 ? 20 : 0, position: 'relative' }}>
+                {/* connector line */}
+                {i < STAGE_LABELS.length - 1 && (
+                  <div style={{ position: 'absolute', left: 11, top: 24, bottom: 0, width: 2, background: done ? 'var(--green)' : 'var(--line)', opacity: done ? 0.5 : 0.3 }} />
+                )}
+                {/* dot */}
+                <div style={{ width: 24, height: 24, borderRadius: '50%', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: done ? 'var(--green)' : current ? 'var(--amber)' : 'var(--line)', zIndex: 1 }}>
+                  {done ? <Icon name="checkCircle" size={13} style={{ color: '#fff' }} /> : current ? <Icon name="activity" size={13} style={{ color: '#fff' }} /> : null}
+                </div>
+                <div style={{ paddingTop: 2 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: current ? 700 : done ? 500 : 400, color: future ? 'var(--ink-4)' : 'var(--ink)' }}>
+                    {label}
+                    {current && <Badge tone="amber" style={{ marginLeft: 8 }}>Current</Badge>}
+                    {i === reached && stu.stateEnteredAt && (
+                      <span className="muted" style={{ fontSize: 11.5, marginLeft: 8, fontWeight: 400 }}>
+                        since {new Date(stu.stateEnteredAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                  {/* Show proposal attempts inline */}
+                  {i === 5 && proposals.length > 0 && (
+                    <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {proposals.map(p => (
+                        <Badge key={p.n} tone={p.status === 'accepted' ? 'green' : p.status === 'rejected' ? 'red' : 'amber'}>
+                          Attempt {p.n}: {p.status}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  {/* Show proto attempts inline */}
+                  {i === 3 && stu.protoPres > 0 && (
+                    <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>{stu.protoPres} presentation{stu.protoPres > 1 ? 's' : ''}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

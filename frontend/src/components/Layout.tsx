@@ -134,24 +134,24 @@ interface AppShellProps {
   role: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin';
   page: string;
   onNav: (page: string) => void;
-  onSwitch: (role: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') => void;
   breadcrumb?: string;
   children: React.ReactNode;
   onResolveDemo?: () => void;
   onGoto: (page: string) => void;
   onLogout?: () => void;
+  userFullName?: string;
 }
 
-export const AppShell: React.FC<AppShellProps> = ({ 
-  role, 
-  page, 
-  onNav, 
-  onSwitch, 
-  breadcrumb, 
-  children, 
-  onResolveDemo, 
+export const AppShell: React.FC<AppShellProps> = ({
+  role,
+  page,
+  onNav,
+  breadcrumb,
+  children,
+  onResolveDemo,
   onGoto,
-  onLogout
+  onLogout,
+  userFullName
 }) => {
   const cur = roleById[role];
   const nav = NAV[role] || [];
@@ -189,9 +189,9 @@ export const AppShell: React.FC<AppShellProps> = ({
               <Icon name={cur.icon} size={15} />
             </span>
             <div style={{ lineHeight: 1.2, overflow: "hidden" }}>
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: "#fff", whiteSpace: "nowrap" }}>{cur.person}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: "#fff", whiteSpace: "nowrap" }}>{userFullName || cur.person}</div>
               <div style={{ fontSize: 10.5, color: "var(--on-navy-dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {cur.label} · {cur.sub}
+                {cur.label}
               </div>
             </div>
           </div>
@@ -248,7 +248,17 @@ export const AppShell: React.FC<AppShellProps> = ({
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <NotifBell role={role} onGoto={onGoto} />
             <div style={{ width: 1, height: 24, background: "var(--line)" }} />
-            <RoleSwitcher role={role} onSwitch={onSwitch} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ textAlign: "right", lineHeight: 1.3 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{userFullName || cur.person}</div>
+                <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{cur.label}</div>
+              </div>
+              {onLogout && (
+                <button className="btn btn-ghost btn-sm" onClick={onLogout} title="Log out">
+                  <Icon name="external" size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </header>
         

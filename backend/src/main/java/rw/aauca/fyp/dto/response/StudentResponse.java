@@ -23,6 +23,8 @@ public class StudentResponse {
     private Instant stateEnteredAt;
     private UUID supervisorId;
     private String supervisorName;
+    private String supervisorEmail;
+    private String supervisorPhone;
     private boolean bookSignedOff;
     private int protoAttempts;
     private boolean proposalLocked;
@@ -44,6 +46,8 @@ public class StudentResponse {
                 .stateEnteredAt(s.getStateEnteredAt())
                 .supervisorId(s.getSupervisor() != null ? s.getSupervisor().getId() : null)
                 .supervisorName(s.getSupervisor() != null ? s.getSupervisor().getFullName() : null)
+                .supervisorEmail(s.getSupervisor() != null ? s.getSupervisor().getEmail() : null)
+                .supervisorPhone(s.getSupervisor() != null ? s.getSupervisor().getPhone() : null)
                 .bookSignedOff(s.isBookSignedOff())
                 .protoAttempts(s.getProtoAttempts())
                 .proposalLocked(s.isProposalLocked())

@@ -22,6 +22,8 @@ export interface StudentResponse {
   stateEnteredAt: string;
   supervisorId: string | null;
   supervisorName: string | null;
+  supervisorEmail: string | null;
+  supervisorPhone: string | null;
   bookSignedOff: boolean;
   protoAttempts: number;
   proposalLocked: boolean;

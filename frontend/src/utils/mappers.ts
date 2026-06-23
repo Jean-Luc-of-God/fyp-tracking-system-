@@ -41,6 +41,9 @@ export function mapStudent(s: StudentResponse): Student {
     topic: s.projectTopic ?? '',
     stateIndex,
     supervisorId: s.supervisorId ?? null,
+    supervisorName: s.supervisorName ?? null,
+    supervisorEmail: s.supervisorEmail ?? null,
+    supervisorPhone: s.supervisorPhone ?? null,
     examinerPreId: null,   // loaded lazily via panels API
     examinerDefId: null,   // loaded lazily via panels API
     protoPres: s.protoAttempts,
