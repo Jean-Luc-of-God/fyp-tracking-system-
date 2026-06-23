@@ -1,27 +1,30 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
-import type { Student, Supervisor } from '../types';
-import { 
-  Icon, 
-  Badge, 
-  Avatar, 
-  StateBadge, 
-  EmptyState, 
-  SectionTitle, 
-  MetricCard, 
-  Modal, 
-  StateTracker 
+import type { Student, Supervisor, ProposalAttempt } from '../types';
+import {
+  Icon,
+  Badge,
+  Avatar,
+  StateBadge,
+  EmptyState,
+  SectionTitle,
+  MetricCard,
+  Modal,
+  StateTracker
 } from '../components/SharedUI';
 import { EmailPreview } from '../components/Emails';
 import { Timeline } from '../components/Timeline';
-import { 
-  fmt, 
-  supById, 
-  SUPERVISORS, 
-  STATES, 
-  TEMPLATES 
+import {
+  fmt,
+  supById,
+  SUPERVISORS,
+  STATES,
+  TEMPLATES
 } from '../utils/fypData';
 import { notify } from '../components/LetterUI';
+import { proposalsApi } from '../api/proposals';
+import { mapProposalAttempt } from '../utils/mappers';
+import { getToken } from '../api/client';
 
 /* ---------------- StudentRecord Component (shared accountability record) ---------------- */
 interface StudentRecordProps {
@@ -31,9 +34,53 @@ interface StudentRecordProps {
 }
 
 export const StudentRecord: React.FC<StudentRecordProps> = ({ studentId, onBack, readOnly: _readOnly }) => {
-  const { students, notificationLogs, letters } = useAppContext();
+  const { students, notificationLogs, letters, refreshStudents } = useAppContext();
   const stu = students.find(s => s.id === studentId);
   const [emailOpen, setEmailOpen] = useState<any>(null);
+
+  // Real proposal history (loaded from API when authenticated)
+  const [apiAttempts, setApiAttempts] = useState<ProposalAttempt[] | null>(null);
+  const [proposalDecision, setProposalDecision] = useState<'ACCEPTED' | 'REJECTED' | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [proposalSubmitting, setProposalSubmitting] = useState(false);
+  const [proposalError, setProposalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!getToken() || !studentId) return;
+    proposalsApi.history(studentId)
+      .then(list => setApiAttempts(list.map(mapProposalAttempt)))
+      .catch(() => setApiAttempts(null));
+  }, [studentId]);
+
+  async function handleProposalReview() {
+    if (!stu || !proposalDecision) return;
+    if (proposalDecision === 'REJECTED' && !rejectReason.trim()) return;
+    setProposalSubmitting(true);
+    setProposalError(null);
+    try {
+      await proposalsApi.review(
+        stu.id,
+        proposalDecision,
+        proposalDecision === 'REJECTED' ? rejectReason : undefined
+      );
+      notify(
+        proposalDecision === 'ACCEPTED'
+          ? `Proposal accepted — ${stu.name} advances to Supervision`
+          : `Proposal returned to ${stu.name} for revision`,
+        proposalDecision === 'ACCEPTED' ? 'success' : 'info'
+      );
+      setProposalDecision(null);
+      setRejectReason('');
+      await refreshStudents();
+      // Reload proposal history
+      const updated = await proposalsApi.history(studentId);
+      setApiAttempts(updated.map(mapProposalAttempt));
+    } catch (e) {
+      setProposalError(e instanceof Error ? e.message : 'Failed to record decision');
+    } finally {
+      setProposalSubmitting(false);
+    }
+  }
 
   if (!stu) return <EmptyState title="Student not found" sub="Record could not be retrieved." />;
 
@@ -151,20 +198,84 @@ export const StudentRecord: React.FC<StudentRecordProps> = ({ studentId, onBack,
               </div>
               <div className="hr" />
               <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ fontSize: 13 }}>Proposal attempts</span>
-                  <Badge tone={(stu.attempts || []).some(a => a.status === "rejected") ? "red" : "grey"}>{(stu.attempts || []).length} submitted · {(stu.attempts || []).filter(a => a.status === "rejected").length} rejected</Badge>
-                </div>
-                {(stu.attempts || []).map(a => (
-                  <div key={a.n} style={{ display: "flex", gap: 9, fontSize: 12, padding: "6px 0", borderTop: "1px solid var(--line-soft)" }}>
-                    <span className="mono" style={{ color: "var(--ink-4)", flex: "none" }}>#{a.n}</span>
-                    <span style={{ flex: 1 }}>
-                      <Badge tone={a.status === "accepted" ? "green" : a.status === "rejected" ? "red" : "blue"} style={{ height: 16, fontSize: 9.5 }}>{a.status.toUpperCase()}</Badge>
-                      {a.reason && <div className="muted" style={{ marginTop: 4 }}>{a.reason}</div>}
-                    </span>
-                    <span className="mono muted" style={{ fontSize: 10.5, flex: "none" }}>{fmt(a.ts)}</span>
-                  </div>
-                ))}
+                {(() => {
+                  const attempts = apiAttempts ?? stu.attempts ?? [];
+                  const rejected = attempts.filter(a => a.status === "rejected").length;
+                  return (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <span style={{ fontSize: 13 }}>Proposal attempts</span>
+                        <Badge tone={rejected > 0 ? "red" : "grey"}>{attempts.length} submitted · {rejected} rejected</Badge>
+                      </div>
+                      {attempts.map(a => (
+                        <div key={a.n} style={{ display: "flex", gap: 9, fontSize: 12, padding: "6px 0", borderTop: "1px solid var(--line-soft)" }}>
+                          <span className="mono" style={{ color: "var(--ink-4)", flex: "none" }}>#{a.n}</span>
+                          <span style={{ flex: 1 }}>
+                            <Badge tone={a.status === "accepted" ? "green" : a.status === "rejected" ? "red" : "blue"} style={{ height: 16, fontSize: 9.5 }}>{a.status.toUpperCase()}</Badge>
+                            {a.reason && <div className="muted" style={{ marginTop: 4 }}>{a.reason}</div>}
+                          </span>
+                          <span className="mono muted" style={{ fontSize: 10.5, flex: "none" }}>{fmt(a.ts)}</span>
+                        </div>
+                      ))}
+
+                      {/* Proposal review panel — shown only when student is PROPOSAL_UNDER_REVIEW */}
+                      {stu.stateIndex === 5 && getToken() && (
+                        <div style={{ marginTop: 12, padding: "12px 14px", background: "var(--surface)", borderRadius: 8, border: "1px solid var(--line)" }}>
+                          <div className="eyebrow" style={{ marginBottom: 10, color: "var(--navy)" }}>Record decision</div>
+                          {!proposalDecision ? (
+                            <div style={{ display: "flex", gap: 9 }}>
+                              <button className="btn btn-danger btn-sm" onClick={() => setProposalDecision('REJECTED')}>
+                                <Icon name="x" size={13} /> Reject
+                              </button>
+                              <button className="btn btn-primary btn-sm" onClick={() => setProposalDecision('ACCEPTED')}>
+                                <Icon name="check" size={13} /> Accept
+                              </button>
+                            </div>
+                          ) : proposalDecision === 'REJECTED' ? (
+                            <div>
+                              <textarea
+                                className="input"
+                                placeholder="Rejection reason (visible to student)…"
+                                value={rejectReason}
+                                onChange={e => setRejectReason(e.target.value)}
+                                rows={3}
+                                style={{ width: "100%", resize: "vertical", fontSize: 13 }}
+                              />
+                              {proposalError && <div style={{ color: "var(--red)", fontSize: 12, marginTop: 6 }}>{proposalError}</div>}
+                              <div style={{ display: "flex", gap: 9, marginTop: 9 }}>
+                                <button className="btn btn-ghost btn-sm" onClick={() => setProposalDecision(null)}>Cancel</button>
+                                <button
+                                  className="btn btn-danger btn-sm"
+                                  onClick={handleProposalReview}
+                                  disabled={proposalSubmitting || !rejectReason.trim()}
+                                >
+                                  {proposalSubmitting ? "Saving…" : "Send rejection"}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <p className="muted" style={{ fontSize: 12.5, marginBottom: 10 }}>
+                                Accept this proposal? {stu.name} will advance to Supervision.
+                              </p>
+                              {proposalError && <div style={{ color: "var(--red)", fontSize: 12, marginBottom: 8 }}>{proposalError}</div>}
+                              <div style={{ display: "flex", gap: 9 }}>
+                                <button className="btn btn-ghost btn-sm" onClick={() => setProposalDecision(null)}>Cancel</button>
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  onClick={handleProposalReview}
+                                  disabled={proposalSubmitting}
+                                >
+                                  {proposalSubmitting ? "Saving…" : "Confirm accept"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
           </div>
