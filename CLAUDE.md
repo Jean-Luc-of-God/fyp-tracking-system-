@@ -180,9 +180,11 @@ rw.aauca.fyp/
 │   └── WhatsAppGroup.java          # WhatsApp group links per cohort
 ├── enums/
 │   ├── Role.java                   # STUDENT SUPERVISOR FACILITATOR HOD EXAMINER SUPERADMIN
-│   ├── StudentState.java           # 12 states
+│   ├── StudentState.java           # 13 states (includes WITHDRAWN)
 │   ├── NotificationStatus.java     # PENDING SENT FAILED RETRIED
-│   └── ProposalStatus.java         # PENDING ACCEPTED REJECTED
+│   ├── ProposalStatus.java         # PENDING ACCEPTED REJECTED
+│   ├── PanelType.java              # PRE_DEFENSE DEFENSE
+│   └── PanelOutcome.java           # CLEARED PASSED REFERRED FAILED
 ├── exception/
 │   ├── InvalidStateTransitionException.java
 │   └── GlobalExceptionHandler.java  # @RestControllerAdvice
@@ -238,6 +240,15 @@ rw.aauca.fyp/
 | POST | /api/proposals/{studentId}/review | HOD,FACILITATOR,SUPERADMIN | Accept or reject with reason; locks after 3 rejections |
 | POST | /api/proposals/{studentId}/unlock | HOD,SUPERADMIN | Unlock submission after 3 rejections |
 | GET | /api/proposals/{studentId}/history | all roles | Full proposal attempt history |
+
+### Panels
+| Method | Path | Role | Description |
+|---|---|---|---|
+| POST | /api/panels/assign | HOD,FACILITATOR,SUPERADMIN | Assign examiner to a panel (no supervisor as own examiner) |
+| PATCH | /api/panels/{id}/outcome | EXAMINER,HOD,FACILITATOR,SUPERADMIN | Record panel outcome; auto-transitions state on CLEARED/PASSED |
+| DELETE | /api/panels/{id} | HOD,FACILITATOR,SUPERADMIN | Remove assignment before outcome is recorded |
+| GET | /api/panels/student/{studentId} | all roles | List all panel assignments for a student |
+| GET | /api/panels/me | EXAMINER | Examiner's own panel assignments |
 
 ### Supervision
 | Method | Path | Role | Description |
@@ -298,7 +309,7 @@ All tests pass: health, login, auth enforcement, user CRUD, student list, state 
 ### Phase 2 — Backend Features (IN PROGRESS)
 - **2a** Supervision module (slots + meetings) ✅ Built, pushed
 - **2b** Proposal module — submit, accept/reject with reason, 3-attempt limit ✅ Built
-- **2c** Panel assignment — pre-defense/defense panels, no supervisor as own examiner
+- **2c** Panel assignment — pre-defense/defense panels, no supervisor as own examiner ✅ Built
 - **2d** Email notifications — on state transitions + milestone reminders
 - **2e** Audit + notification log query endpoints
 

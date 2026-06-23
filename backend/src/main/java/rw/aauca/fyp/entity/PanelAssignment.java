@@ -2,6 +2,8 @@ package rw.aauca.fyp.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import rw.aauca.fyp.enums.PanelOutcome;
+import rw.aauca.fyp.enums.PanelType;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -23,13 +25,15 @@ public class PanelAssignment {
     @JoinColumn(name = "examiner_id", nullable = false)
     private User examiner;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "panel_type", nullable = false)
-    private String panelType;  // PRE_DEFENSE | DEFENSE
+    private PanelType panelType;
 
     @Column(name = "scheduled_at")
     private Instant scheduledAt;
 
-    private String outcome;
+    @Enumerated(EnumType.STRING)
+    private PanelOutcome outcome;
 
     @Column(name = "outcome_note")
     private String outcomeNote;
