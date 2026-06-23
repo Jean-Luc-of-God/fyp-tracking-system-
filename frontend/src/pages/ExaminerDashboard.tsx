@@ -1,16 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { 
-  SectionTitle, 
-  MetricCard, 
-  Icon, 
-  Avatar, 
-  StateBadge, 
-  Badge, 
-  WhatsAppButton 
+import {
+  SectionTitle,
+  MetricCard,
+  Icon,
+  Avatar,
+  StateBadge,
+  Badge,
+  WhatsAppButton
 } from '../components/SharedUI';
 import { supById } from '../utils/fypData';
 import type { Student } from '../types';
+import { panelsApi } from '../api/panels';
+import type { PanelAssignmentResponse } from '../api/types';
+import { getToken } from '../api/client';
+import { notify } from '../components/LetterUI';
 
 /* ---------------- Examiner Dashboard ---------------- */
 export const ExaminerDashboard: React.FC = () => {
@@ -93,14 +97,45 @@ export const ExaminerDashboard: React.FC = () => {
 
 /* ---------------- Examiner Predefense ---------------- */
 export const ExaminerPredefense: React.FC = () => {
-  const { students, activeUserId, predefenseWa, recordPredefenseOutcome } = useAppContext();
+  const { students, activeUserId, predefenseWa, recordPredefenseOutcome, refreshStudents } = useAppContext();
   const EX_ID = activeUserId || "sup-hab";
-  
-  const examinees = students.filter(s => (s.examinerPreId === EX_ID || s.examinerDefId === EX_ID) && s.stateIndex >= 9);
-  const [status, setStatus] = useState<{ [studentId: string]: string }>({});
+
+  const [panels, setPanels] = useState<PanelAssignmentResponse[] | null>(null);
+  const [recording, setRecording] = useState<{ [panelId: string]: boolean }>({});
+
+  useEffect(() => {
+    if (!getToken()) return;
+    panelsApi.mine()
+      .then(list => setPanels(list.filter(p => p.panelType === 'PRE_DEFENSE')))
+      .catch(() => setPanels(null));
+  }, [EX_ID]);
+
+  async function clearToDefend(panel: PanelAssignmentResponse) {
+    setRecording(r => ({ ...r, [panel.id]: true }));
+    try {
+      await panelsApi.recordOutcome(panel.id, 'CLEARED', 'Pre-defense cleared');
+      const stuName = students.find(s => s.id === panel.studentId)?.name ?? 'Student';
+      notify(`${stuName} cleared to defend`, 'success');
+      await refreshStudents();
+      const updated = await panelsApi.mine();
+      setPanels(updated.filter(p => p.panelType === 'PRE_DEFENSE'));
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to record outcome', 'error');
+    } finally {
+      setRecording(r => ({ ...r, [panel.id]: false }));
+    }
+  }
+
   const predefGroup = (predefenseWa[EX_ID] || [])[0];
 
-  const listToRender = examinees.length ? examinees : students.filter(s => s.stateIndex >= 9).slice(0, 2);
+  // Show real panels when authenticated, else fall back to mock examinees
+  const useRealPanels = getToken() && panels !== null;
+  const mockExaminees = students.filter(
+    s => (s.examinerPreId === EX_ID || s.examinerDefId === EX_ID) && s.stateIndex >= 9
+  );
+  const mockFallback = mockExaminees.length
+    ? mockExaminees
+    : students.filter(s => s.stateIndex >= 9).slice(0, 2);
 
   return (
     <div>
@@ -119,39 +154,78 @@ export const ExaminerPredefense: React.FC = () => {
         {predefGroup && <WhatsAppButton team={predefGroup.team.replace("FYP 2026 · ", "")} link={predefGroup.link} sm />}
       </div>
 
-      <div style={{ display: "grid", gap: 14 }}>
-        {listToRender.map(s => {
-          const st = status[s.id] || s.predefenseStatus || "Scheduled";
-          return (
-            <div key={s.id} className="card card-pad" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", gap: 13, alignItems: "center" }}>
-                <Avatar name={s.name} role="Student" size={42} />
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>
-                    {s.name} <span className="mono muted" style={{ fontSize: 11, fontWeight: 400 }}>{s.id}</span>
+      {useRealPanels ? (
+        <div style={{ display: "grid", gap: 14 }}>
+          {panels!.length === 0 && (
+            <div className="card card-pad muted" style={{ fontSize: 13 }}>No pre-defense panels assigned to you yet.</div>
+          )}
+          {panels!.map(p => {
+            const stu = students.find(s => s.id === p.studentId);
+            const cleared = p.outcome === 'CLEARED';
+            return (
+              <div key={p.id} className="card card-pad" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 13, alignItems: "center" }}>
+                  <Avatar name={stu?.name ?? p.studentId} role="Student" size={42} />
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>
+                      {stu?.name ?? p.studentId}
+                    </div>
+                    <div className="muted" style={{ fontSize: 12.5 }}>{stu?.topic ?? ''}</div>
                   </div>
-                  <div className="muted" style={{ fontSize: 12.5 }}>{s.topic} · {s.org}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <Badge tone={cleared ? "green" : "amber"} dot>{cleared ? "Cleared to defend" : "Scheduled"}</Badge>
+                  {!cleared ? (
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => clearToDefend(p)}
+                      disabled={!!recording[p.id]}
+                    >
+                      <Icon name="check" size={15} /> {recording[p.id] ? "Saving…" : "Mark cleared to defend"}
+                    </button>
+                  ) : (
+                    <span style={{ color: "var(--green-deep)", fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
+                      <Icon name="arrowRight" size={14} /> Advanced to Defense
+                    </span>
+                  )}
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <Badge tone={st === "Cleared to defend" ? "green" : "amber"} dot>{st}</Badge>
-                {st !== "Cleared to defend" ? (
-                  <button className="btn btn-primary" onClick={() => {
-                    recordPredefenseOutcome(s.id, true);
-                    setStatus(x => ({ ...x, [s.id]: "Cleared to defend" }));
-                  }}>
-                    <Icon name="check" size={15} /> Mark completed — clear to defend
-                  </button>
-                ) : (
-                  <span style={{ color: "var(--green-deep)", fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
-                    <Icon name="arrowRight" size={14} /> Advanced to Defense
-                  </span>
-                )}
+            );
+          })}
+        </div>
+      ) : (
+        // Mock fallback (unauthenticated or no panel data)
+        <div style={{ display: "grid", gap: 14 }}>
+          {mockFallback.map(s => {
+            const st = s.predefenseStatus || "Scheduled";
+            return (
+              <div key={s.id} className="card card-pad" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 13, alignItems: "center" }}>
+                  <Avatar name={s.name} role="Student" size={42} />
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>
+                      {s.name} <span className="mono muted" style={{ fontSize: 11, fontWeight: 400 }}>{s.id}</span>
+                    </div>
+                    <div className="muted" style={{ fontSize: 12.5 }}>{s.topic} · {s.org}</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <Badge tone={st === "Cleared to defend" ? "green" : "amber"} dot>{st}</Badge>
+                  {st !== "Cleared to defend" ? (
+                    <button className="btn btn-primary" onClick={() => { recordPredefenseOutcome(s.id, true); }}>
+                      <Icon name="check" size={15} /> Mark completed — clear to defend
+                    </button>
+                  ) : (
+                    <span style={{ color: "var(--green-deep)", fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
+                      <Icon name="arrowRight" size={14} /> Advanced to Defense
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
