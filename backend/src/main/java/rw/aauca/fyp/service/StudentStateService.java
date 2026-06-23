@@ -39,12 +39,20 @@ public class StudentStateService {
         Map.entry(StudentState.DEFENSE,                  EnumSet.of(StudentState.COMPLETED))
     );
 
+    private static final Set<StudentState> TERMINAL = EnumSet.of(StudentState.COMPLETED, StudentState.WITHDRAWN);
+
     @Transactional
     public Student transition(Student student, StudentState toState, User actor, String note) {
         StudentState fromState = student.getState();
 
-        Set<StudentState> allowed = ALLOWED.getOrDefault(fromState, EnumSet.noneOf(StudentState.class));
-        if (!allowed.contains(toState)) {
+        // WITHDRAWN is allowed from any non-terminal state
+        boolean toWithdrawn = toState == StudentState.WITHDRAWN;
+        if (!toWithdrawn) {
+            Set<StudentState> allowed = ALLOWED.getOrDefault(fromState, EnumSet.noneOf(StudentState.class));
+            if (!allowed.contains(toState)) {
+                throw new InvalidStateTransitionException(fromState, toState);
+            }
+        } else if (TERMINAL.contains(fromState)) {
             throw new InvalidStateTransitionException(fromState, toState);
         }
 

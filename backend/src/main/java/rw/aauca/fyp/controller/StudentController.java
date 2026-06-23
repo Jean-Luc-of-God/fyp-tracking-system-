@@ -91,4 +91,13 @@ public class StudentController {
         return ResponseEntity.ok(StudentResponse.from(
                 studentService.flagStudent(id, body.get("note"), actor)));
     }
+
+    @PostMapping("/{id}/withdraw")
+    @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN')")
+    public ResponseEntity<StudentResponse> withdraw(@PathVariable UUID id,
+                                                    @RequestBody Map<String, String> body,
+                                                    @AuthenticationPrincipal User actor) {
+        return ResponseEntity.ok(StudentResponse.from(
+                studentService.withdrawStudent(id, body.getOrDefault("note", null), actor)));
+    }
 }

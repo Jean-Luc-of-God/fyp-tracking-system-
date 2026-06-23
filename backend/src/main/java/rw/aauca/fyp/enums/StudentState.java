@@ -12,5 +12,6 @@ public enum StudentState {
     BOOK_SUBMITTED,
     PRE_DEFENSE,
     DEFENSE,
-    COMPLETED
+    COMPLETED,
+    WITHDRAWN
 }

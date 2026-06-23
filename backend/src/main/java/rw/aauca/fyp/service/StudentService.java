@@ -81,6 +81,13 @@ public class StudentService {
         return student;
     }
 
+    @Transactional
+    public Student withdrawStudent(UUID studentId, String note, User actor) {
+        Student student = getById(studentId);
+        stateService.transition(student, StudentState.WITHDRAWN, actor, note);
+        return studentRepository.save(student);
+    }
+
     /**
      * Import students from an Excel file uploaded by the HOD.
      * Expected columns: reg_number, full_name, email, phone (optional), organisation (optional), group (optional)

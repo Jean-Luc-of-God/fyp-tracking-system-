@@ -59,15 +59,23 @@ STUDENT, SUPERVISOR, FACILITATOR, HOD, EXAMINER, SUPERADMIN
 
 ---
 
-## Student State Machine (12 states)
+## Student State Machine (13 states)
 
 ```
-REGISTERED → PROPOSAL_SUBMITTED → PROPOSAL_ACCEPTED
-                                 → PROPOSAL_REJECTED (up to 3 attempts, then DISMISSED)
-PROPOSAL_ACCEPTED → PROGRESS_REVIEW → PRE_DEFENSE_CLEARED
-PRE_DEFENSE_CLEARED → DEFENSE_READY → PASSED | REFERRED | FAILED
-Any state → WITHDRAWN | FLAGGED
+REGISTERED → CASE_LETTER_SUBMITTED → CASE_LETTER_APPROVED → PROTOTYPE_REVIEW
+PROTOTYPE_REVIEW → PROTOTYPE_REVIEW   (re-presentation loop; proto_attempts incremented)
+PROTOTYPE_REVIEW → PROTOTYPE_GRANTED → PROPOSAL_UNDER_REVIEW
+PROPOSAL_UNDER_REVIEW → PROPOSAL_UNDER_REVIEW   (rejection loop; attempt + reason recorded)
+PROPOSAL_UNDER_REVIEW → PROPOSAL_ACCEPTED → SUPERVISION → BOOK_SUBMITTED
+BOOK_SUBMITTED → PRE_DEFENSE → DEFENSE → COMPLETED
+Any non-terminal state → WITHDRAWN
 ```
+
+- `FLAGGED` is a boolean column on the student record, not a state — any authorised actor can flag a student while they remain in their current state.
+- `WITHDRAWN` is terminal: once withdrawn, no further transitions are allowed.
+- `COMPLETED` is terminal.
+- Proposal rejection attempts are tracked in the `proposal_attempts` table (Phase 2b enforces the 3-attempt limit there).
+- Prototype re-presentation attempts are tracked in `students.proto_attempts`.
 
 Valid transitions are enforced in `StudentStateService.java` — invalid transitions throw `InvalidStateTransitionException`.
 
@@ -221,6 +229,7 @@ rw.aauca.fyp/
 | POST | /api/students/{id}/transition | (role-checked in service) | Change state |
 | PATCH | /api/students/{id}/sign-off-book | SUPERVISOR | Mark book signed |
 | PATCH | /api/students/{id}/flag | HOD,FACILITATOR,SUPERADMIN | Flag student |
+| POST | /api/students/{id}/withdraw | HOD,FACILITATOR,SUPERADMIN | Withdraw student |
 
 ### Supervision
 | Method | Path | Role | Description |
