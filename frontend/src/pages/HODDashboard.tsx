@@ -19,6 +19,7 @@ import {
   useNow 
 } from '../components/LetterUI';
 import { EmailPreview } from '../components/Emails';
+import { studentsApi } from '../api/students';
 import { 
   SupDashboard, 
   SupSupervision, 
@@ -281,99 +282,112 @@ export const HODDashboard: React.FC<HODDashboardProps> = ({ onNav }) => {
 
 /* ---------------- HODUpload ---------------- */
 export const HODUpload: React.FC = () => {
-  const [stage, setStage] = useState(1);
-  const rows = [
-    { id: "STU-2026-041", name: "Mutoni Aline", org: "Inkomoko", reg: "12 Aug 2025", ok: true, err: "" },
-    { id: "STU-2026-042", name: "Gatete Yves", org: "AC Group (Tap&Go)", reg: "03 Jul 2025", ok: true, err: "" },
-    { id: "STU-2026-043", name: "Cyiza Belinda", org: "Equity Bank", reg: "20 Sep 2025", ok: true, err: "" },
-    { id: "STU-2026-044", name: "Iradukunda Kevin", org: "RSSB", reg: "05 Oct 2025", ok: true, err: "" },
-    { id: "STU-2026-045", name: "Umutoni Clarisse", org: "Zipline Rwanda", reg: "28 Aug 2025", ok: true, err: "" },
-    { id: "STU-2026-046", name: "Ishimwe Grace", org: "—", reg: "11 Sep 2025", ok: false, err: "Missing case-study org" },
-    { id: "STU-2026-042", name: "Gatete Y.", org: "AC Group", reg: "—", ok: false, err: "Duplicate ID / missing date" },
-  ];
-  const valid = rows.filter(r => r.ok).length;
-  
+  const { refreshStudents } = useAppContext();
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<{ count: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function pickFile(f: File) {
+    setSelectedFile(f);
+    setResult(null);
+    setError(null);
+  }
+
+  async function doImport() {
+    if (!selectedFile) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const imported = await studentsApi.importExcel(selectedFile);
+      setResult({ count: imported.length });
+      await refreshStudents();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Import failed');
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <div>
-      <SectionTitle sub="Upload the registered-student list. Columns: Student ID, Name, Case-Study Organisation, Book-Registration Date. The date starts each student's 1-year clock.">
+      <SectionTitle sub="Upload an Excel file with columns: reg_number, full_name, email, phone, org, group. Each row creates a student at REGISTERED state.">
         Upload Students
       </SectionTitle>
-      
-      {stage === 0 && (
-        <div className="card card-pad" style={{ maxWidth: 640, textAlign: "center", padding: "44px 30px", margin: "0 auto" }}>
+
+      {!result && (
+        <div
+          className="card card-pad"
+          style={{
+            maxWidth: 640, textAlign: "center", padding: "44px 30px", margin: "0 auto",
+            border: dragOver ? "2px dashed var(--navy)" : "2px dashed var(--line)",
+            background: dragOver ? "var(--surface)" : "",
+            transition: "all .15s",
+          }}
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={e => {
+            e.preventDefault();
+            setDragOver(false);
+            const f = e.dataTransfer.files[0];
+            if (f) pickFile(f);
+          }}
+        >
           <div style={{ width: 60, height: 60, borderRadius: 14, background: "var(--green-bg)", color: "var(--green-deep)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <Icon name="upload" size={28} />
           </div>
-          <h3 style={{ fontSize: 16 }}>Drop your Excel / CSV file here</h3>
+          <h3 style={{ fontSize: 16 }}>
+            {selectedFile ? selectedFile.name : "Drop your Excel file here"}
+          </h3>
           <p className="muted" style={{ fontSize: 13, marginTop: 6, marginBottom: 18 }}>
-            Columns: Student ID, Name, Case-Study Organisation, Book-Registration Date.
+            Required columns: <span className="mono">reg_number · full_name · email · phone · org · group</span>
           </p>
-          <button className="btn btn-primary btn-lg" onClick={() => setStage(1)}>
-            <Icon name="file" size={16} /> Select class-of-2026.xlsx
-          </button>
+
+          {!selectedFile && (
+            <label className="btn btn-primary btn-lg" style={{ cursor: "pointer" }}>
+              <Icon name="file" size={16} /> Choose file
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                style={{ display: "none" }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) pickFile(f); }}
+              />
+            </label>
+          )}
+
+          {selectedFile && (
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <button className="btn btn-ghost" onClick={() => setSelectedFile(null)}>Change file</button>
+              <button
+                className="btn btn-primary"
+                onClick={doImport}
+                disabled={uploading}
+              >
+                {uploading ? "Importing…" : `Import ${selectedFile.name}`}
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <div style={{ marginTop: 16, color: "var(--red)", fontSize: 13, display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
+              <Icon name="alert" size={15} /> {error}
+            </div>
+          )}
         </div>
       )}
-      
-      {stage === 1 && (
-        <div className="card" style={{ overflow: "hidden", maxWidth: 880, margin: "0 auto" }}>
-          <div className="card-hd">
-            <h3>Preview &amp; validation — class-of-2026.xlsx</h3>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Badge tone="green">{valid} valid</Badge>
-              <Badge tone="red">{rows.length - valid} errors</Badge>
-            </div>
-          </div>
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Student ID</th>
-                <th>Name</th>
-                <th>Case-Study Organisation</th>
-                <th>Book Registered</th>
-                <th>Validation</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i} style={{ cursor: "default", background: r.ok ? "" : "var(--red-bg)" }}>
-                  <td className="mono">{r.id}</td>
-                  <td style={{ fontWeight: 600, color: "var(--ink)" }}>{r.name}</td>
-                  <td className="muted" style={{ fontSize: 12.5 }}>{r.org}</td>
-                  <td className="mono" style={{ fontSize: 11.5 }}>{r.reg}</td>
-                  <td>
-                    {r.ok ? (
-                      <span style={{ color: "var(--green-deep)", display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
-                        <Icon name="check" size={14} /> OK
-                      </span>
-                    ) : (
-                      <span style={{ color: "var(--red)", display: "flex", alignItems: "center", gap: 5, fontSize: 12 }}>
-                        <Icon name="alert" size={14} /> {r.err}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", background: "var(--surface)", borderTop: "1px solid var(--line)" }}>
-            <span className="muted" style={{ fontSize: 12.5 }}>
-              Only the {valid} valid rows will be imported, each at <strong>Registered</strong> with the 1-year clock started.
-            </span>
-            <div style={{ display: "flex", gap: 9 }}>
-              <button className="btn btn-ghost" onClick={() => setStage(0)}>Choose another file</button>
-              <button className="btn btn-primary" onClick={() => setStage(2)}>Import {valid} students</button>
-            </div>
-          </div>
-        </div>
-      )}
-      
-      {stage === 2 && (
+
+      {result && (
         <div className="card card-pad" style={{ maxWidth: 560, margin: "0 auto" }}>
-          <SuccessScreen 
-            badge="Import complete" 
-            title={valid + " students imported"}
-            sub="They now appear at Registered with their book-registration date recorded. Next, go to Request Letters to open their submission windows."
-            actions={<button className="btn btn-ghost" onClick={() => setStage(stage - 1)}>Back to preview</button>} 
+          <SuccessScreen
+            badge="Import complete"
+            title={`${result.count} student${result.count !== 1 ? "s" : ""} imported`}
+            sub="They now appear at Registered. Next, assign supervisors and open submission windows."
+            actions={
+              <button className="btn btn-ghost" onClick={() => { setResult(null); setSelectedFile(null); }}>
+                Import another file
+              </button>
+            }
           />
         </div>
       )}

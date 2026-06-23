@@ -22,4 +22,10 @@ export const studentsApi = {
 
   withdraw: (studentId: string, reason?: string) =>
     api.post<StudentResponse>(`/api/students/${studentId}/withdraw`, { reason }),
+
+  importExcel: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.postForm<StudentResponse[]>('/api/students/import', form);
+  },
 };

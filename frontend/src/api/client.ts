@@ -63,4 +63,20 @@ export const api = {
   delete: <T>(path: string) => request<T>('DELETE', path),
   postPublic: <T>(path: string, body?: unknown) =>
     request<T>('POST', path, body, { auth: false }),
+
+  // Multipart file upload — does NOT set Content-Type (browser sets it with boundary)
+  postForm: async <T>(path: string, form: FormData): Promise<T> => {
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${BASE}${path}`, { method: 'POST', headers, body: form });
+    if (!res.ok) {
+      let message = `HTTP ${res.status}`;
+      try { const err = await res.json(); message = err.message || err.error || message; }
+      catch { /* ignore */ }
+      throw new ApiError(res.status, message);
+    }
+    if (res.status === 204) return undefined as T;
+    return res.json() as Promise<T>;
+  },
 };
