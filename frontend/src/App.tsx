@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { AppProvider, useAppContext } from './context/AppContext';
-import { 
-  AppShell, 
-  LoginLauncher, 
-  NAV, 
-  roleById 
+import { useAuth } from './hooks/useAuth';
+import {
+  AppShell,
+  LoginLauncher,
+  NAV,
+  roleById
 } from './components/Layout';
 import { 
   StudentDashboard, 
@@ -79,9 +80,11 @@ function skeletonKind(page: string) {
 }
 
 function MainApp() {
-  const { students, notificationLogs, letters, activeUserId, switchUser } = useAppContext();
+  const { students, notificationLogs, letters, switchUser } = useAppContext();
+  const { login: apiLogin } = useAuth();
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState<'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin'>("facilitator");
+  const [activeUserId, setActiveUserId] = useState<string>('');
   const [page, setPage] = useState("pipeline");
   const [focusStudentId, setFocusStudentId] = useState<string | null>(null);
   const [showFlow, setShowFlow] = useState(false);
@@ -89,55 +92,44 @@ function MainApp() {
 
   const firstPage = (r: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') => NAV[r][0].id;
 
-  const greetUser = (r: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') => {
+  const greetUser = (r: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin', fullName?: string) => {
     const hr = new Date().getHours();
     const part = hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening";
-    const person = roleById[r]?.person || "";
+    const person = fullName || roleById[r]?.person || "";
     let msg = `${part}, ${person}`;
     try {
       if (r === "hod") {
         const n = students.filter(s => letters[s.id]?.status === "submitted").length;
         msg += n ? ` — ${n} letter${n > 1 ? "s" : ""} need your review` : " — no letters pending review";
       } else if (r === "facilitator") {
-        const n = 5; // standard coordinate items
-        msg += ` — ${n} item${n > 1 ? "s" : ""} need coordination`;
+        msg += " — 5 items need coordination";
       } else if (r === "supervisor") {
-        const n = students.filter(s => s.supervisorId === activeUserId && s.nextMeeting && !s.nextMeeting.confirmed).length;
-        msg += n ? ` — ${n} meeting${n > 1 ? "s" : ""} to confirm` : " — your students are on track";
+        msg += " — your students are on track";
       } else if (r === "student") {
         msg += " — here's where your project stands";
       } else if (r === "superadmin") {
         const f = notificationLogs.filter(n => n.status === "failed").length;
         msg += f ? ` — ${f} email issue${f > 1 ? "s" : ""} to review` : " — all systems operational";
       }
-    } catch (e) { /* ignore */ }
+    } catch { /* ignore */ }
     notify(msg, "info");
   };
 
-  function login(r: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') {
-    const defaultIds = {
-      student: "STU-2026-014",
-      supervisor: "sup-hab",
-      facilitator: "fac-ing",
-      hod: "hod-biz",
-      superadmin: "adm-001"
-    };
-    switchUser(r, defaultIds[r]);
+  async function login(email: string, password: string): Promise<'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin' | null> {
+    const authUser = await apiLogin(email, password);
+    if (!authUser) return null;
+    const r = authUser.role;
+    setActiveUserId(authUser.userId);
+    switchUser(r, authUser.userId);
     setRole(r);
     setPage(firstPage(r));
     setAuthed(true);
-    setTimeout(() => greetUser(r), 480);
+    setTimeout(() => greetUser(r, authUser.fullName), 480);
+    return r;
   }
 
   function switchRole(r: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') {
-    const defaultIds = {
-      student: "STU-2026-014",
-      supervisor: "sup-hab",
-      facilitator: "fac-ing",
-      hod: "hod-biz",
-      superadmin: "adm-001"
-    };
-    switchUser(r, defaultIds[r]);
+    switchUser(r, activeUserId);
     setRole(r);
     setPage(firstPage(r));
     setFocusStudentId(null);
@@ -155,14 +147,7 @@ function MainApp() {
 
   function jump(r: string, p: string, studentId?: string) {
     const typedRole = r as 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin';
-    const defaultIds = {
-      student: "STU-2026-014",
-      supervisor: "sup-hab",
-      facilitator: "fac-ing",
-      hod: "hod-biz",
-      superadmin: "adm-001"
-    };
-    switchUser(typedRole, defaultIds[typedRole]);
+    switchUser(typedRole, activeUserId);
     setRole(typedRole);
     setPage(p);
     setFocusStudentId(studentId || null);
@@ -196,7 +181,7 @@ function MainApp() {
   if (!authed) {
     return (
       <>
-        <LoginLauncher onPick={login} />
+        <LoginLauncher onLogin={login} />
         <ToastHost />
       </>
     );

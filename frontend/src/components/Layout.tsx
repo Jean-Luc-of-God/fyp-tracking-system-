@@ -259,63 +259,24 @@ export const AppShell: React.FC<AppShellProps> = ({
 
 /* ---------------- Login launcher ---------------- */
 interface LoginLauncherProps {
-  onPick: (role: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') => void;
+  onLogin: (email: string, password: string) => Promise<'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin' | null>;
 }
 
-export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onPick }) => {
+export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onLogin }) => {
   const [forgot, setForgot] = useState(false);
-  const [totpFor, setTotpFor] = useState<RoleInfo | null>(null); // role pending 2FA
-  const [code, setCode] = useState("");
-  const [err, setErr] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  function pick(r: RoleInfo) {
-    if (r.id === "student") { 
-      onPick(r.id); 
-      return; 
-    } // students: password only, no TOTP
-    setTotpFor(r); 
-    setCode(""); 
-    setErr(false);
-  }
-
-  function setDigit(i: number, v: string) {
-    v = v.replace(/\D/g, "").slice(-1);
-    const arr = code.padEnd(6, " ").split("");
-    arr[i] = v || " ";
-    setCode(arr.join("").trimEnd());
-    setErr(false);
-    if (v && i < 5 && inputsRef.current[i + 1]) {
-      inputsRef.current[i + 1]?.focus();
-    }
-  }
-
-  function onKey(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Backspace" && !code[i] && i > 0 && inputsRef.current[i - 1]) {
-      inputsRef.current[i - 1]?.focus();
-    }
-  }
-
-  function verify() {
-    const clean = code.replace(/\s/g, "");
-    if (clean.length < 6) { 
-      setErr(true); 
-      return; 
-    }
-    setVerifying(true);
-    setTimeout(() => {
-      // demo: any 6 digits accepted except "000000"
-      if (clean === "000000") { 
-        setErr(true); 
-        setVerifying(false); 
-        return; 
-      }
-      setVerifying(false); 
-      if (totpFor) {
-        onPick(totpFor.id);
-      }
-    }, 650);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim() || !password.trim()) { setErr('Email and password are required.'); return; }
+    setErr(null);
+    setSubmitting(true);
+    const role = await onLogin(email.trim(), password);
+    setSubmitting(false);
+    if (!role) setErr('Invalid email or password. Please try again.');
   }
 
   return (
@@ -324,7 +285,7 @@ export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onPick }) => {
       <div className="login-brand" style={{ background: "linear-gradient(155deg, var(--navy) 0%, var(--navy-900) 100%)", color: "#fff", padding: "56px 60px", display: "flex", flexDirection: "column", justifyContent: "space-between", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", top: -80, right: -80, width: 320, height: 320, borderRadius: "50%", border: "1px solid rgba(255,255,255,.07)" }} />
         <div style={{ position: "absolute", bottom: -120, right: -40, width: 260, height: 260, borderRadius: "50%", border: "1px solid rgba(255,255,255,.06)" }} />
-        
+
         <div style={{ display: "flex", alignItems: "center", gap: 13, position: "relative" }}>
           <div style={{ width: 48, height: 48, borderRadius: 11, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flex: "none" }}>
             <Icon name="building" size={28} style={{ color: 'var(--navy)' }} />
@@ -334,7 +295,7 @@ export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onPick }) => {
             <div style={{ fontSize: 11.5, color: "var(--on-navy-dim)", marginTop: 4 }}>Department of Software Engineering</div>
           </div>
         </div>
-        
+
         <div style={{ position: "relative", maxWidth: 440 }}>
           <div className="badge badge-solid-amber" style={{ marginBottom: 18 }}>FINAL YEAR PROJECT · CLASS OF 2026</div>
           <h1 style={{ color: "#fff", fontSize: 34, lineHeight: 1.15, letterSpacing: "-.02em", fontWeight: 600 }}>FYP Tracking &amp;<br />Accountability System</h1>
@@ -363,97 +324,61 @@ export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onPick }) => {
             <>
               <h2 style={{ fontSize: 22 }}>Forgot password</h2>
               <p className="muted" style={{ fontSize: 13.5, marginTop: 6, marginBottom: 20 }}>
-                Password resets are handled by the Superadmin. Submit a request and you'll be notified by email once it's reset.
+                Password resets are handled by the Superadmin. Contact them directly and your password will be reset via the admin panel.
               </p>
-              <label className="field-label">University email</label>
-              <input className="input" placeholder="you@stu.aauca.ac.rw" defaultValue="kwizera.luc@stu.aauca.ac.rw" style={{ marginBottom: 14 }} />
-              <button className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={() => setForgot(false)}>Request password reset</button>
               <div style={{ marginTop: 14, padding: "10px 12px", background: "var(--blue-bg)", borderRadius: 8, fontSize: 12, color: "var(--ink-2)", display: "flex", gap: 8 }}>
                 <Icon name="shield" size={15} style={{ color: "var(--blue)", flex: "none", marginTop: 1 }} />
-                A Superadmin will reset your password and the action will be recorded in the audit log.
+                The Superadmin will reset your password and the action will be recorded in the audit log.
               </div>
               <button onClick={() => setForgot(false)} className="btn btn-quiet" style={{ marginTop: 14, width: "100%", fontSize: 12.5 }}>← Back to sign in</button>
-            </>
-          ) : totpFor ? (
-            <>
-              <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 4 }}>
-                <span style={{ width: 40, height: 40, borderRadius: 10, background: totpFor.color + "1a", color: totpFor.color, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-                  <Icon name="shield" size={20} />
-                </span>
-                <div>
-                  <h2 style={{ fontSize: 20 }}>Two-factor authentication</h2>
-                  <div className="muted" style={{ fontSize: 12.5 }}>{totpFor.label} · {totpFor.person}</div>
-                </div>
-              </div>
-              <p className="muted" style={{ fontSize: 13, marginTop: 12, marginBottom: 18, lineHeight: 1.6 }}>
-                Staff accounts are protected by an authenticator app. Enter the 6-digit code from <strong>Google Authenticator</strong> (or similar) for your AAUCA account.
-              </p>
-              <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                {[0, 1, 2, 3, 4, 5].map(i => (
-                  <input 
-                    key={i} 
-                    ref={el => { inputsRef.current[i] = el; }} 
-                    inputMode="numeric" 
-                    maxLength={1}
-                    value={code[i] || ""} 
-                    onChange={e => setDigit(i, e.target.value)} 
-                    onKeyDown={e => onKey(i, e)}
-                    autoFocus={i === 0}
-                    className="input mono" 
-                    style={{ width: 48, height: 56, textAlign: "center", fontSize: 22, fontWeight: 600, padding: 0, borderColor: err ? "var(--red)" : undefined }} 
-                  />
-                ))}
-              </div>
-              {err && (
-                <div style={{ fontSize: 12, color: "var(--red)", marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
-                  <Icon name="alert" size={13} /> Invalid or incomplete code. Try again.
-                </div>
-              )}
-              <button className="btn btn-primary btn-lg" style={{ width: "100%", marginTop: 10 }} onClick={verify} disabled={verifying}>
-                {verifying ? <><Icon name="refresh" size={15} /> Verifying…</> : <><Icon name="shield" size={15} /> Verify &amp; sign in</>}
-              </button>
-              <div style={{ marginTop: 14, padding: "10px 12px", background: "var(--surface)", borderRadius: 8, fontSize: 11.5, color: "var(--ink-3)", lineHeight: 1.6 }}>
-                <Icon name="key" size={13} style={{ verticalAlign: -2, marginRight: 5 }} />
-                Demo: enter any 6 digits to continue. Lost your device? The Superadmin can reset your authenticator.
-              </div>
-              <button onClick={() => setTotpFor(null)} className="btn btn-quiet" style={{ marginTop: 12, width: "100%", fontSize: 12.5 }}>← Back to sign in</button>
             </>
           ) : (
             <>
               <h2 style={{ fontSize: 22 }}>Sign in</h2>
               <p className="muted" style={{ fontSize: 13.5, marginTop: 6, marginBottom: 22 }}>
-                Choose a role to enter that logged-in experience. You can switch roles anytime from the top bar.
+                Sign in with your AAUCA email and password.
               </p>
-              <div style={{ display: "grid", gap: 9 }}>
-                {ROLES.map(r => (
-                  <button 
-                    key={r.id} 
-                    onClick={() => pick(r)} 
-                    className="role-pick"
-                    style={{ display: "flex", alignItems: "center", gap: 13, padding: "12px 14px", border: "1px solid var(--line)", borderRadius: 10, background: "#fff", cursor: "pointer", textAlign: "left", transition: "all .14s", boxShadow: "var(--sh-sm)" }}
-                  >
-                    <span style={{ width: 38, height: 38, borderRadius: 9, background: r.color + "1a", color: r.color, display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-                      <Icon name={r.icon} size={19} />
-                    </span>
-                    <span style={{ flex: 1 }}>
-                      <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>{r.label}</span>
-                      <span style={{ display: "block", fontSize: 12, color: "var(--ink-3)" }}>{r.person} · {r.sub}</span>
-                    </span>
-                    {r.id === "student" ? (
-                      <Icon name="arrowRight" size={17} style={{ color: "var(--ink-4)" }} />
-                    ) : (
-                      <span title="Requires 2FA" style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--ink-4)", fontSize: 10.5, fontWeight: 600 }}>
-                        <Icon name="shield" size={14} /> 2FA
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 12, fontSize: 11.5, color: "var(--ink-3)" }}>
-                <Icon name="shield" size={13} style={{ color: "var(--ink-4)" }} /> 
-                Staff sign-ins require an authenticator code. Students sign in with their password only.
-              </div>
-              <button onClick={() => setForgot(true)} className="btn btn-quiet" style={{ marginTop: 10, width: "100%", color: "var(--ink-3)", fontSize: 12.5 }}>Forgot password?</button>
+              <form onSubmit={handleSubmit} noValidate>
+                <label className="field-label">University email</label>
+                <input
+                  className="input"
+                  type="email"
+                  placeholder="you@aauca.ac.rw"
+                  value={email}
+                  onChange={e => { setEmail(e.target.value); setErr(null); }}
+                  style={{ marginBottom: 14 }}
+                  autoFocus
+                  disabled={submitting}
+                />
+                <label className="field-label">Password</label>
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => { setPassword(e.target.value); setErr(null); }}
+                  style={{ marginBottom: err ? 8 : 18 }}
+                  disabled={submitting}
+                />
+                {err && (
+                  <div style={{ fontSize: 12, color: "var(--red)", marginBottom: 12, display: "flex", alignItems: "center", gap: 5 }}>
+                    <Icon name="alert" size={13} /> {err}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-lg"
+                  style={{ width: "100%" }}
+                  disabled={submitting}
+                >
+                  {submitting
+                    ? <><Icon name="refresh" size={15} /> Signing in…</>
+                    : <><Icon name="arrowRight" size={15} /> Sign in</>}
+                </button>
+              </form>
+              <button onClick={() => setForgot(true)} className="btn btn-quiet" style={{ marginTop: 10, width: "100%", color: "var(--ink-3)", fontSize: 12.5 }}>
+                Forgot password?
+              </button>
             </>
           )}
         </div>
