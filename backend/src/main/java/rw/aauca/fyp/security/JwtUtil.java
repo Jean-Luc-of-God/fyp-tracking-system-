@@ -7,7 +7,9 @@ import org.springframework.stereotype.Component;
 import rw.aauca.fyp.entity.User;
 
 import java.security.Key;
+import java.time.Instant;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtUtil {
@@ -24,6 +26,7 @@ public class JwtUtil {
 
     public String generate(User user) {
         return Jwts.builder()
+                .setId(UUID.randomUUID().toString())   // jti — used as blacklist key
                 .setSubject(user.getEmail())
                 .claim("role", user.getRole().name())
                 .claim("userId", user.getId().toString())
@@ -35,6 +38,14 @@ public class JwtUtil {
 
     public String extractEmail(String token) {
         return parseClaims(token).getSubject();
+    }
+
+    public String extractJti(String token) {
+        return parseClaims(token).getId();
+    }
+
+    public Instant extractExpiration(String token) {
+        return parseClaims(token).getExpiration().toInstant();
     }
 
     public boolean isValid(String token) {

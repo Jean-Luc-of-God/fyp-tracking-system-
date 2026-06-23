@@ -11,6 +11,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import rw.aauca.fyp.repository.UserRepository;
+import rw.aauca.fyp.service.JwtBlacklistService;
 
 import java.io.IOException;
 
@@ -20,6 +21,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final UserRepository userRepository;
+    private final JwtBlacklistService blacklist;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -33,6 +35,18 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
         String token = header.substring(7);
         if (!jwtUtil.isValid(token)) {
+            chain.doFilter(request, response);
+            return;
+        }
+
+        // Reject blacklisted tokens (logged-out sessions)
+        try {
+            String jti = jwtUtil.extractJti(token);
+            if (jti != null && blacklist.isBlacklisted(jti)) {
+                chain.doFilter(request, response);
+                return;
+            }
+        } catch (Exception ignored) {
             chain.doFilter(request, response);
             return;
         }

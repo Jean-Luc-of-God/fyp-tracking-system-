@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { login as apiLogin } from '../api/auth';
-import { saveToken, clearToken, getToken } from '../api/client';
+import { saveToken, getToken, logout as apiLogout } from '../api/client';
 import type { AuthResponse } from '../api/types';
 
 export type FrontendRole = 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin';
@@ -52,8 +52,8 @@ export function useAuth() {
     }
   }, []);
 
-  const logout = useCallback(() => {
-    clearToken();
+  const logout = useCallback(async () => {
+    await apiLogout();   // hits POST /api/auth/logout to blacklist the JWT
     setUser(null);
     setError(null);
   }, []);

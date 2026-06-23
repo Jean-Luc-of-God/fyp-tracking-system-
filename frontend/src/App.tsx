@@ -81,7 +81,7 @@ function skeletonKind(page: string) {
 
 function MainApp() {
   const { students, notificationLogs, letters, switchUser, refreshStudents } = useAppContext();
-  const { login: apiLogin } = useAuth();
+  const { login: apiLogin, logout: apiLogout } = useAuth();
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState<'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin'>("facilitator");
   const [activeUserId, setActiveUserId] = useState<string>('');
@@ -262,7 +262,7 @@ function MainApp() {
         onGoto={goto}
         breadcrumb={isNotifs ? "Notifications" : (navItem ? navItem.label : "")} 
         onResolveDemo={() => setShowFlow(true)}
-        onLogout={() => setAuthed(false)}
+        onLogout={async () => { await apiLogout(); setAuthed(false); }}
       >
         <ErrorBoundary key={role + page}>
           {loading ? (

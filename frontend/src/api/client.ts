@@ -13,6 +13,20 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+/** Call backend logout to blacklist the current JWT, then clear local storage. */
+export async function logout(): Promise<void> {
+  const token = getToken();
+  if (token) {
+    try {
+      await fetch(`${BASE}/api/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch { /* network error — still clear local token */ }
+  }
+  clearToken();
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
