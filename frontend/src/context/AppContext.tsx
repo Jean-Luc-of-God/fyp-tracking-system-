@@ -24,9 +24,11 @@ import {
 import { getToken } from '../api/client';
 import { studentsApi } from '../api/students';
 import { panelsApi } from '../api/panels';
+import { usersApi } from '../api/users';
 import { auditApi, notificationsApi } from '../api/logs';
 import { INDEX_STATE } from '../api/types';
-import { mapStudent, mapAuditLog, mapNotificationLog } from '../utils/mappers';
+import { mapStudent, mapSupervisor, mapAuditLog, mapNotificationLog } from '../utils/mappers';
+import type { Supervisor } from '../types';
 
 const LOCAL_STORAGE_KEY = 'fyp_tracker_state_v1';
 
@@ -93,6 +95,10 @@ interface AppContextType {
   // Data loading
   refreshStudents: () => Promise<void>;
   dataSource: 'mock' | 'api';
+
+  // Real supervisors from API (empty until authenticated)
+  supervisors: Supervisor[];
+  supervisorById: Record<string, Supervisor>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -137,18 +143,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [dataSource, setDataSource] = useState<'mock' | 'api'>('mock');
+  const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
 
   // Persist to localStorage (only mock/local state — API data is re-fetched on load)
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
-  // Load real students (and logs) from the API whenever a token is available
+  // Load real students, supervisors, and logs from the API whenever a token is available
   const refreshStudents = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const [apiStudents, auditPage, failedNotifs] = await Promise.allSettled([
+      const [apiStudents, apiSups, auditPage, failedNotifs] = await Promise.allSettled([
         studentsApi.list(),
+        usersApi.byRole('SUPERVISOR'),
         auditApi.list(0, 100),
         notificationsApi.failed(),
       ]);
@@ -156,6 +164,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const mapped = apiStudents.status === 'fulfilled'
         ? apiStudents.value.map(mapStudent)
         : null;
+
+      if (apiSups.status === 'fulfilled') {
+        setSupervisors(apiSups.value.map(mapSupervisor));
+      }
 
       const mappedAudit = auditPage.status === 'fulfilled'
         ? auditPage.value.content.map(mapAuditLog)
@@ -809,6 +821,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       getStudentMeetings,
       refreshStudents,
       dataSource,
+      supervisors,
+      supervisorById: Object.fromEntries(supervisors.map(s => [s.id, s])),
     }}>
       {children}
     </AppContext.Provider>

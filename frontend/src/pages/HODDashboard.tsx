@@ -854,7 +854,9 @@ export const HODReview: React.FC = () => {
 
 /* ---------------- HODSupervisors ---------------- */
 export const HODSupervisors: React.FC = () => {
-  const { students, assignSupervisor } = useAppContext();
+  const { students, assignSupervisor, supervisors: apiSups, supervisorById: apiSupById } = useAppContext();
+  const supList = apiSups.length > 0 ? apiSups : SUPERVISORS;
+  const supMap = apiSups.length > 0 ? apiSupById : supById;
   const sample = students.filter(s => s.stateIndex >= 6).slice(0, 4);
   const [assigned, setAssigned] = useState<{ [stuId: string]: string }>({});
   const [emailFor, setEmailFor] = useState<{ s: Student; sup: any } | null>(null);
@@ -893,22 +895,22 @@ export const HODSupervisors: React.FC = () => {
                   <td className="muted" style={{ fontSize: 12.5 }}>{s.topic}</td>
                   <td>
                     {done ? (
-                      <Badge tone="green" dot>{supById[done]?.name || done}</Badge>
+                      <Badge tone="green" dot>{supMap[done]?.name || done}</Badge>
                     ) : (
-                      <select 
-                        className="select" 
-                        style={{ width: 200, height: 34 }} 
-                        defaultValue="" 
+                      <select
+                        className="select"
+                        style={{ width: 200, height: 34 }}
+                        defaultValue=""
                         onChange={e => {
                           if (e.target.value) {
                             assignSupervisor(s.id, e.target.value);
                             setAssigned(a => ({ ...a, [s.id]: e.target.value }));
-                            setEmailFor({ s, sup: supById[e.target.value] });
+                            setEmailFor({ s, sup: supMap[e.target.value] });
                           }
                         }}
                       >
                         <option value="" disabled>Choose supervisor…</option>
-                        {SUPERVISORS.map(x => (
+                        {supList.map(x => (
                           <option key={x.id} value={x.id}>{x.name} — {x.title}</option>
                         ))}
                       </select>

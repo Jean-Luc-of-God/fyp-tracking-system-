@@ -221,7 +221,8 @@ interface FacPipelineProps {
 }
 
 export const FacPipeline: React.FC<FacPipelineProps> = ({ onOpen }) => {
-  const { students, pendingItems } = useAppContext();
+  const { students, pendingItems, supervisorById: apiSupById } = useAppContext();
+  const supMap = Object.keys(apiSupById).length > 0 ? apiSupById : supById;
   
   const counts = useMemo(() => {
     const list = Array(11).fill(0);
@@ -297,7 +298,7 @@ export const FacPipeline: React.FC<FacPipelineProps> = ({ onOpen }) => {
                       {s.flagged && <Icon name="flag" size={13} style={{ color: "var(--red)", flex: "none" }} />}
                     </div>
                     <div className="mono" style={{ fontSize: 10, color: "var(--ink-4)" }}>{s.id} · {s.group}</div>
-                    {s.supervisorId && <div className="muted" style={{ fontSize: 10.5, marginTop: 3 }}>{(supById[s.supervisorId] || { name: s.supervisorId }).name}</div>}
+                    {s.supervisorId && <div className="muted" style={{ fontSize: 10.5, marginTop: 3 }}>{(supMap[s.supervisorId] || { name: s.supervisorId }).name}</div>}
                     {(s.attempts || []).filter(a => a.status === "rejected").length > 0 && (
                       <div className="badge badge-red" style={{ height: 15, fontSize: 9, marginTop: 5 }}>
                         ×{(s.attempts || []).filter(a => a.status === "rejected").length} rejected
@@ -322,7 +323,9 @@ interface FacStudentsProps {
 }
 
 export const FacStudents: React.FC<FacStudentsProps> = ({ focusStudent, onClearFocus }) => {
-  const { students } = useAppContext();
+  const { students, supervisors: apiSups, supervisorById: apiSupById } = useAppContext();
+  const supList = apiSups.length > 0 ? apiSups : SUPERVISORS;
+  const supMap = apiSups.length > 0 ? apiSupById : supById;
   const [open, setOpen] = useState<string | null>(focusStudent);
   const [q, setQ] = useState("");
   const [stage, setStage] = useState("all");
@@ -378,7 +381,7 @@ export const FacStudents: React.FC<FacStudentsProps> = ({ focusStudent, onClearF
         </select>
         <select className="select" value={sup} onChange={e => setSup(e.target.value)} style={{ width: "auto", height: 34 }}>
           <option value="all">All supervisors</option>
-          {SUPERVISORS.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          {supList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         {(stage !== "all" || group !== "all" || sup !== "all" || q) && (
           <button className="btn btn-quiet btn-sm" onClick={() => { setStage("all"); setGroup("all"); setSup("all"); setQ(""); }}>Clear</button>
@@ -396,7 +399,7 @@ export const FacStudents: React.FC<FacStudentsProps> = ({ focusStudent, onClearF
                   <td><span className="mono" style={{ fontSize: 12 }}>{s.id}</span></td>
                   <td>{s.group}</td>
                   <td><StateBadge stateIndex={s.stateIndex} short /></td>
-                  <td>{s.supervisorId ? (supById[s.supervisorId] || { name: s.supervisorId }).name : <span className="faint">—</span>}</td>
+                  <td>{s.supervisorId ? (supMap[s.supervisorId] || { name: s.supervisorId }).name : <span className="faint">—</span>}</td>
                   <td>
                     {(s.attempts || []).filter(a => a.status === "rejected").length > 0 ? (
                       <Badge tone="red">×{(s.attempts || []).filter(a => a.status === "rejected").length}</Badge>
@@ -422,7 +425,9 @@ export const FacStudents: React.FC<FacStudentsProps> = ({ focusStudent, onClearF
 
 /* ---------------- FacExaminers Component ---------------- */
 export const FacExaminers: React.FC = () => {
-  const { students, assignExaminer } = useAppContext();
+  const { students, assignExaminer, supervisors: apiSups, supervisorById: apiSupById } = useAppContext();
+  const supList = apiSups.length > 0 ? apiSups : SUPERVISORS;
+  const supMap = apiSups.length > 0 ? apiSupById : supById;
   const [assigned, setAssigned] = useState<{ [stuId: string]: string }>({});
   const [sentTo, setSentTo] = useState<{ student: Student; examiner: Supervisor } | null>(null);
 
@@ -431,7 +436,7 @@ export const FacExaminers: React.FC = () => {
   const sample = needPre.length ? needPre : students.filter(s => s.stateIndex >= 8).slice(0, 4);
 
   function handleAssign(stu: Student, exId: string) {
-    const ex = supById[exId];
+    const ex = supMap[exId];
     assignExaminer(stu.id, exId, 'predefense');
     setAssigned(a => ({ ...a, [stu.id]: exId }));
     setSentTo({ student: stu, examiner: ex as Supervisor });
@@ -453,8 +458,8 @@ export const FacExaminers: React.FC = () => {
             <thead><tr><th>Student</th><th>Stage</th><th>Supervisor (excluded)</th><th>Assign examiner</th><th></th></tr></thead>
             <tbody>
               {sample.map(s => {
-                const sup = s.supervisorId ? supById[s.supervisorId] : null;
-                const eligible = SUPERVISORS.filter(x => x.examiner && x.id !== s.supervisorId);
+                const sup = s.supervisorId ? supMap[s.supervisorId] : null;
+                const eligible = supList.filter(x => x.examiner && x.id !== s.supervisorId);
                 const done = assigned[s.id];
                 return (
                   <tr key={s.id} style={{ cursor: "default" }}>
@@ -463,7 +468,7 @@ export const FacExaminers: React.FC = () => {
                     <td>{sup ? <span style={{ color: "var(--ink-3)" }}>{sup.name}</span> : <span className="faint">—</span>}</td>
                     <td>
                       {done ? (
-                        <Badge tone="green" dot>{(supById[done] || { name: done }).name}</Badge>
+                        <Badge tone="green" dot>{(supMap[done] || { name: done }).name}</Badge>
                       ) : (
                         <select className="select" style={{ width: 190, height: 34 }} defaultValue="" onChange={e => e.target.value && handleAssign(s, e.target.value)}>
                           <option value="" disabled>Choose examiner…</option>
