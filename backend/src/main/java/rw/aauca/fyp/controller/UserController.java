@@ -62,4 +62,16 @@ public class UserController {
         userService.resetPassword(id, body.get("password"), actor);
         return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
     }
+
+    @PostMapping("/me/change-password")
+    public ResponseEntity<?> changeOwnPassword(@RequestBody Map<String, String> body,
+                                               @AuthenticationPrincipal User currentUser) {
+        String current  = body.get("currentPassword");
+        String newPass  = body.get("newPassword");
+        if (current == null || newPass == null || newPass.length() < 8) {
+            return ResponseEntity.badRequest().body(Map.of("message", "currentPassword and newPassword (min 8 chars) are required"));
+        }
+        userService.changePassword(currentUser.getId(), current, newPass);
+        return ResponseEntity.ok(Map.of("message", "Password changed successfully"));
+    }
 }

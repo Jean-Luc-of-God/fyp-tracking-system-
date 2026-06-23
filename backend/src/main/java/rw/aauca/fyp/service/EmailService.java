@@ -85,7 +85,7 @@ public class EmailService {
                 + "Your FYP status has been updated to: " + friendlyState(newState) + ".\n"
                 + (extraNote != null && !extraNote.isBlank() ? "\nNote: " + extraNote + "\n" : "")
                 + "\nLog in to the FYP portal to view full details.\n\n"
-                + "AAUCA FYP Office";
+                + "AUCA FYP Office";
         send("STATE_TRANSITION_" + newState, recipient.getId(), student.getId(), subject, body);
     }
 
@@ -95,7 +95,7 @@ public class EmailService {
                 + student.getUser().getFullName() + " (" + student.getRegNumber() + ") has submitted "
                 + "their research proposal (attempt " + attemptNumber + ") and it is now pending review.\n\n"
                 + "Please log in to the FYP portal to review and respond.\n\n"
-                + "AAUCA FYP Office";
+                + "AUCA FYP Office";
         send("PROPOSAL_SUBMITTED", supervisor.getId(), student.getId(), subject, body);
     }
 
@@ -105,7 +105,7 @@ public class EmailService {
                 + "Congratulations! Your research proposal has been reviewed and accepted.\n"
                 + "You will now move into the supervision phase. Please coordinate with your "
                 + "assigned supervisor to begin regular meetings.\n\n"
-                + "AAUCA FYP Office";
+                + "AUCA FYP Office";
         send("PROPOSAL_ACCEPTED", student.getId(), studentRecord.getId(), subject, body);
     }
 
@@ -117,7 +117,7 @@ public class EmailService {
                 + "Reviewer feedback:\n" + reason + "\n\n"
                 + "You have " + remaining + " submission attempt(s) remaining.\n"
                 + "Please address the feedback and resubmit through the FYP portal.\n\n"
-                + "AAUCA FYP Office";
+                + "AUCA FYP Office";
         send("PROPOSAL_REJECTED", student.getId(), studentRecord.getId(), subject, body);
     }
 
@@ -127,7 +127,7 @@ public class EmailService {
                 + "You have reached the maximum number of proposal submission attempts (3).\n"
                 + "Your proposal submissions are now locked.\n\n"
                 + "Please contact the Head of Department (HOD) if you wish to request an additional slot.\n\n"
-                + "AAUCA FYP Office";
+                + "AUCA FYP Office";
         send("PROPOSAL_LOCKED", student.getId(), studentRecord.getId(), subject, body);
     }
 
@@ -136,7 +136,7 @@ public class EmailService {
         String body = "Dear " + student.getFullName() + ",\n\n"
                 + "The Head of Department has granted you an additional proposal submission slot.\n"
                 + "You may now resubmit your proposal through the FYP portal.\n\n"
-                + "AAUCA FYP Office";
+                + "AUCA FYP Office";
         send("PROPOSAL_UNLOCKED", student.getId(), studentRecord.getId(), subject, body);
     }
 
@@ -148,7 +148,7 @@ public class EmailService {
                 + "  Student: " + student.getUser().getFullName() + " (" + student.getRegNumber() + ")\n"
                 + (scheduledAt != null ? "  Scheduled: " + scheduledAt + "\n" : "")
                 + "\nPlease log in to the FYP portal to view full details.\n\n"
-                + "AAUCA FYP Office";
+                + "AUCA FYP Office";
         send("PANEL_ASSIGNED", examiner.getId(), student.getId(), subject, body);
     }
 
@@ -160,7 +160,7 @@ public class EmailService {
                 + "  Outcome: " + friendlyOutcome(outcome) + "\n"
                 + (note != null && !note.isBlank() ? "  Note: " + note + "\n" : "")
                 + "\nPlease log in to the FYP portal for further instructions.\n\n"
-                + "AAUCA FYP Office";
+                + "AUCA FYP Office";
         send("PANEL_OUTCOME_" + outcome, studentUser.getId(), student.getId(), subject, body);
     }
 

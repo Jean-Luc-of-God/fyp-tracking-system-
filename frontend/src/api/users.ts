@@ -18,4 +18,7 @@ export const usersApi = {
 
   resetPassword: (id: string, newPassword: string) =>
     api.post<void>(`/api/users/${id}/reset-password`, { newPassword }),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post<{ message: string }>('/api/users/me/change-password', { currentPassword, newPassword }),
 };

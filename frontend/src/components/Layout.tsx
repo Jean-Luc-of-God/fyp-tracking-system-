@@ -27,6 +27,7 @@ export const NAV: { [role: string]: { id: string; label: string; icon: string; b
     { id: "case", label: "Case-Study Letter", icon: "file" },
     { id: "supervisor", label: "My Supervisor", icon: "users" },
     { id: "timeline", label: "My Timeline", icon: "history" },
+    { id: "settings", label: "Account Settings", icon: "settings" },
   ],
   supervisor: [
     { id: "dashboard", label: "Dashboard", icon: "dashboard" },
@@ -58,6 +59,7 @@ export const NAV: { [role: string]: { id: string; label: string; icon: string; b
     { id: "mysupervision", label: "My Supervision", icon: "activity" },
     { id: "availability", label: "Supervisor Availability", icon: "calendar" },
     { id: "records", label: "Records & Reports", icon: "list" },
+    { id: "settings", label: "Account Settings", icon: "settings" },
   ],
   superadmin: [
     { id: "dashboard", label: "System Overview", icon: "dashboard" },
@@ -65,6 +67,7 @@ export const NAV: { [role: string]: { id: string; label: string; icon: string; b
     { id: "audit", label: "Audit Log", icon: "shield" },
     { id: "notifications", label: "Notification Log", icon: "mail" },
     { id: "config", label: "Configuration", icon: "settings" },
+    { id: "settings", label: "Account Settings", icon: "users" },
   ],
 };
 
@@ -167,7 +170,7 @@ export const AppShell: React.FC<AppShellProps> = ({
       <aside className={"app-sidebar" + (drawer ? " open" : "")}>
         <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "16px 16px 14px" }}>
           <div style={{ width: 38, height: 38, borderRadius: 9, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flex: "none", overflow: "hidden" }}>
-            <img src="assets/aauca-logo.jpg" alt="AAUCA" style={{ width: 34, height: 34, objectFit: "contain" }} 
+            <img src="assets/aauca-logo.jpg" alt="AUCA" style={{ width: 34, height: 34, objectFit: "contain" }} 
                  onError={(e) => {
                    // Fallback if logo doesn't exist
                    e.currentTarget.style.display = 'none';
@@ -336,7 +339,7 @@ export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onLogin }) => {
             <>
               <h2 style={{ fontSize: 22 }}>Sign in</h2>
               <p className="muted" style={{ fontSize: 13.5, marginTop: 6, marginBottom: 22 }}>
-                Sign in with your AAUCA email and password.
+                Sign in with your AUCA email and password.
               </p>
               <form onSubmit={handleSubmit} noValidate>
                 <label className="field-label">University email</label>

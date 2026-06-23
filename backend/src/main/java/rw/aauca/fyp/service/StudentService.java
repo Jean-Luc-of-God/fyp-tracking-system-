@@ -43,6 +43,11 @@ public class StudentService {
                 .orElseThrow(() -> new RuntimeException("Student not found: " + id));
     }
 
+    public Student getByUserId(UUID userId) {
+        return studentRepository.findByUserId(userId)
+                .orElseThrow(() -> new RuntimeException("No student record linked to this account"));
+    }
+
     @Transactional
     public Student assignSupervisor(UUID studentId, UUID supervisorId, User actor) {
         Student student = getById(studentId);

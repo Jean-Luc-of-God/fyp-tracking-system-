@@ -1,4 +1,4 @@
-const BASE = 'http://localhost:9191';
+const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:9191';
 const TOKEN_KEY = 'fyp_jwt';
 
 export function saveToken(token: string) {

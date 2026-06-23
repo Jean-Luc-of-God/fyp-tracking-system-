@@ -28,6 +28,7 @@ import { notify } from '../components/LetterUI';
 import { supervisionApi } from '../api/supervision';
 import { mapMeeting } from '../utils/mappers';
 import { getToken } from '../api/client';
+import { usersApi } from '../api/users';
 
 interface SupervisorDashboardProps {
   onOpen: (page: string, id: string) => void;
@@ -885,6 +886,54 @@ export const SupSupervision: React.FC<SupSupervisionProps> = ({ focusStudent }) 
 };
 
 /* ---------------- Supervisor Settings: WhatsApp & Phone ---------------- */
+/* Reusable change-password card — used across all role settings */
+export const ChangePasswordCard: React.FC = () => {
+  const [cur, setCur] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (next !== confirm) { notify('Passwords do not match', 'error'); return; }
+    if (next.length < 8) { notify('Password must be at least 8 characters', 'error'); return; }
+    if (!getToken()) { notify('You must be logged in', 'error'); return; }
+    setSaving(true);
+    try {
+      await usersApi.changePassword(cur, next);
+      notify('Password changed successfully', 'success');
+      setCur(''); setNext(''); setConfirm('');
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to change password', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="card card-pad" style={{ maxWidth: 420 }}>
+      <div className="eyebrow" style={{ marginBottom: 14 }}>Change password</div>
+      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 11 }}>
+        <div>
+          <label className="field-label">Current password</label>
+          <input className="input" type="password" value={cur} onChange={e => setCur(e.target.value)} required />
+        </div>
+        <div>
+          <label className="field-label">New password</label>
+          <input className="input" type="password" value={next} onChange={e => setNext(e.target.value)} required minLength={8} />
+        </div>
+        <div>
+          <label className="field-label">Confirm new password</label>
+          <input className="input" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required />
+        </div>
+        <button className="btn btn-primary btn-sm" type="submit" disabled={saving} style={{ marginTop: 4 }}>
+          {saving ? 'Saving…' : 'Update password'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
 export const SupSettings: React.FC = () => {
   const { waGroups, predefenseWa, activeUserId } = useAppContext();
   const SUP_ID = activeUserId || "sup-hab";
@@ -959,21 +1008,24 @@ export const SupSettings: React.FC = () => {
   return (
     <div>
       <SectionTitle sub="Provide the WhatsApp group link(s) students join — separate groups for supervision and for pre-defense panels.">WhatsApp &amp; Contact</SectionTitle>
-      
+
       <div className="resp-stack" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 18, alignItems: "start", maxWidth: 920 }}>
         <div style={{ display: "grid", gap: 18 }}>
           <WAGroupCard title="Supervision groups" sub="Students you supervise join these." accent="navy" list={groups} setList={setGroups} placeholder="Team / group name (e.g. FYP 2026 · Group E)" />
           <WAGroupCard title="Pre-defense groups" sub="Students you examine at pre-defense join these — kept separate from supervision." accent="violet" list={predef} setList={setPredef} placeholder="Panel name (e.g. FYP 2026 · Pre-Defense Panel B)" />
         </div>
-        
-        <div className="card card-pad">
-          <div className="eyebrow" style={{ marginBottom: 10 }}>Contact number</div>
-          <label className="field-label">Phone (visible to your students)</label>
-          <input className="input mono" value={phone} onChange={e => setPhone(e.target.value)} style={{ marginBottom: 14 }} />
-          <div style={{ padding: "11px 13px", background: "var(--surface)", borderRadius: 9, fontSize: 12, color: "var(--ink-3)", lineHeight: 1.6 }}>
-            <Icon name="link" size={14} style={{ verticalAlign: -2, marginRight: 5 }} />
-            WhatsApp is a free click-through — the system stores the link only. There&apos;s no messaging API; students tap to open the group.
+
+        <div style={{ display: 'grid', gap: 18 }}>
+          <div className="card card-pad">
+            <div className="eyebrow" style={{ marginBottom: 10 }}>Contact number</div>
+            <label className="field-label">Phone (visible to your students)</label>
+            <input className="input mono" value={phone} onChange={e => setPhone(e.target.value)} style={{ marginBottom: 14 }} />
+            <div style={{ padding: "11px 13px", background: "var(--surface)", borderRadius: 9, fontSize: 12, color: "var(--ink-3)", lineHeight: 1.6 }}>
+              <Icon name="link" size={14} style={{ verticalAlign: -2, marginRight: 5 }} />
+              WhatsApp is a free click-through — the system stores the link only. There&apos;s no messaging API; students tap to open the group.
+            </div>
           </div>
+          <ChangePasswordCard />
         </div>
       </div>
     </div>

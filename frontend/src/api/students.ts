@@ -4,6 +4,8 @@ import type { StudentResponse } from './types';
 export const studentsApi = {
   list: () => api.get<StudentResponse[]>('/api/students'),
 
+  me: () => api.get<StudentResponse>('/api/students/me'),
+
   get: (id: string) => api.get<StudentResponse>(`/api/students/${id}`),
 
   byState: (state: string) => api.get<StudentResponse[]>(`/api/students/state/${state}`),

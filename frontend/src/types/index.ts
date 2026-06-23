@@ -95,6 +95,7 @@ export interface StudentDefense {
 
 export interface Student {
   id: string;
+  userId: string;
   reg: string;
   name: string;
   initials: string;

@@ -63,4 +63,15 @@ public class UserService {
         auditService.log(actor, "RESET_PASSWORD", "User", userId, user.getEmail(), null);
         return user;
     }
+
+    public void changePassword(UUID userId, String currentPassword, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new IllegalArgumentException("Current password is incorrect");
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+        auditService.log(user, "CHANGE_PASSWORD", "User", userId, user.getEmail(), null);
+    }
 }

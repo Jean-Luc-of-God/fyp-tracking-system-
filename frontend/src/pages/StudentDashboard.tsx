@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { studentsApi } from '../api/students';
+import { supervisionApi } from '../api/supervision';
+import { mapStudent, mapMeeting } from '../utils/mappers';
+import { getToken } from '../api/client';
 import { 
   Icon, 
   Badge, 
@@ -82,10 +86,27 @@ interface NavProps {
   onNav: (view: string) => void;
 }
 
+/* Hook: load the logged-in student's own record from the API */
+function useMyStudent() {
+  const { students, activeUserId } = useAppContext();
+  const [apiStu, setApiStu] = useState<import('../types').Student | null>(null);
+
+  useEffect(() => {
+    if (!getToken()) return;
+    studentsApi.me().then(r => setApiStu(mapStudent(r))).catch(() => {});
+  }, [activeUserId]);
+
+  // Prefer API result; fall back to matching by userId in the preloaded list
+  return apiStu
+    ?? students.find(s => s.userId === activeUserId)
+    ?? students.find(s => s.id === activeUserId)
+    ?? null;
+}
+
 /* ---------------- Student Dashboard Component ---------------- */
 export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
-  const { students, letters, activeUserId } = useAppContext();
-  const stu = students.find(s => s.id === activeUserId);
+  const { letters } = useAppContext();
+  const stu = useMyStudent();
 
   if (!stu) return <EmptyState title="Student not found" sub="Could not find student details." />;
 
@@ -284,8 +305,8 @@ const PrototypingWelcome: React.FC<PrototypingWelcomeProps> = ({ stu, L }) => {
 
 /* ---------------- Student Case Study Letter Page Component ---------------- */
 export const StudentCase: React.FC = () => {
-  const { students, letters, activeUserId, submitCaseLetter } = useAppContext();
-  const stu = students.find(s => s.id === activeUserId);
+  const { letters, submitCaseLetter } = useAppContext();
+  const stu = useMyStudent();
   const [picked, setPicked] = useState(false);
 
   if (!stu) return <EmptyState title="Student not found" sub="Could not find student details." />;
@@ -380,8 +401,7 @@ export const StudentCase: React.FC = () => {
 
 /* ---------------- Student Supervisor Page Component ---------------- */
 export const StudentSupervisor: React.FC = () => {
-  const { students, activeUserId } = useAppContext();
-  const stu = students.find(s => s.id === activeUserId);
+  const stu = useMyStudent();
 
   if (!stu) return <EmptyState title="Student not found" sub="Could not find student details." />;
 
@@ -429,8 +449,8 @@ export const StudentSupervisor: React.FC = () => {
 
 /* ---------------- Student Timeline Page Component ---------------- */
 export const StudentTimeline: React.FC = () => {
-  const { students, letters, activeUserId } = useAppContext();
-  const stu = students.find(s => s.id === activeUserId);
+  const { letters } = useAppContext();
+  const stu = useMyStudent();
 
   if (!stu) return <EmptyState title="Student not found" sub="Could not find student details." />;
 

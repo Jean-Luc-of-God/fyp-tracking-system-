@@ -237,14 +237,14 @@ export const EmailPreview: React.FC<EmailPreviewProps> = ({
       <div style={{ padding: 0 }}>
         <div style={{ background: "var(--navy)", padding: "16px 22px", display: "flex", alignItems: "center", gap: 11 }}>
           <div style={{ width: 32, height: 32, borderRadius: 7, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-            <img src="/src/assets/aauca-logo.jpg" style={{ width: 28, height: 28, objectFit: "contain" }} alt="AAUCA Logo" />
+            <img src="/src/assets/aauca-logo.jpg" style={{ width: 28, height: 28, objectFit: "contain" }} alt="AUCA Logo" />
           </div>
-          <div style={{ color: "#fff", fontSize: 13, fontWeight: 600 }}>AAUCA · Final Year Project</div>
+          <div style={{ color: "#fff", fontSize: 13, fontWeight: 600 }}>AUCA · Final Year Project</div>
         </div>
         <div style={{ padding: "20px 22px" }}>
           {content.body}
           <div style={{ marginTop: 8, paddingTop: 14, borderTop: "1px solid var(--line-soft)", fontSize: 11, color: "var(--ink-4)", lineHeight: 1.6 }}>
-            This is an automated message from the FYP Tracking &amp; Accountability System. Department of Software Engineering, AAUCA Rwanda.<br />
+            This is an automated message from the FYP Tracking &amp; Accountability System. Department of Software Engineering, AUCA Rwanda.<br />
             {ts && <span className="mono">Sent {fmtFull(ts)}</span>}
           </div>
         </div>

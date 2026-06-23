@@ -568,7 +568,7 @@ export const NotificationsPage: React.FC<NotificationsPageProps> = ({ role, onOp
         )}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 14, fontSize: 12, color: "var(--ink-3)", maxWidth: 760 }}>
-        <Icon name="mail" size={14} /> Action items and alerts are also delivered by email to your AAUCA address.
+        <Icon name="mail" size={14} /> Action items and alerts are also delivered by email to your AUCA address.
       </div>
     </div>
   );

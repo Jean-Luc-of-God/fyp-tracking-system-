@@ -30,6 +30,7 @@ export function mapStudent(s: StudentResponse): Student {
 
   return {
     id: s.id,
+    userId: s.userId,
     reg: s.regNumber,
     name: s.fullName,
     initials: initials(s.fullName),

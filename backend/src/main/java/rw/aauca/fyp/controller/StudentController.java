@@ -32,6 +32,12 @@ public class StudentController {
                 .map(StudentResponse::from).toList());
     }
 
+    @GetMapping("/me")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<StudentResponse> getMe(@AuthenticationPrincipal User currentUser) {
+        return ResponseEntity.ok(StudentResponse.from(studentService.getByUserId(currentUser.getId())));
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN','SUPERVISOR','STUDENT')")
     public ResponseEntity<StudentResponse> getOne(@PathVariable UUID id) {

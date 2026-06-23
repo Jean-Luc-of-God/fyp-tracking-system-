@@ -17,7 +17,8 @@ import {
   SupDashboard, 
   SupSupervision, 
   SupAvailability, 
-  SupSettings 
+  SupSettings,
+  ChangePasswordCard
 } from './pages/SupervisorDashboard';
 import { 
   FacPipeline, 
@@ -203,6 +204,7 @@ function MainApp() {
         case "case": return <StudentCase />;
         case "supervisor": return <StudentSupervisor />;
         case "timeline": return <StudentTimeline />;
+        case "settings": return <div style={{ maxWidth: 480 }}><h2 style={{ marginBottom: 20 }}>Account settings</h2><ChangePasswordCard /></div>;
       }
     } else if (role === "supervisor") {
       switch (page) {
@@ -237,6 +239,7 @@ function MainApp() {
         case "mysupervision": return <HODSupervisorWindow />;
         case "availability": return <StaffAvailabilityDirectory title="Supervisor Availability" sub="Weekly office hours and contact points for staff." />;
         case "records": return <HODRecords />;
+        case "settings": return <div style={{ maxWidth: 480 }}><h2 style={{ marginBottom: 20 }}>Account settings</h2><ChangePasswordCard /></div>;
       }
     } else if (role === "superadmin") {
       switch (page) {
@@ -245,6 +248,7 @@ function MainApp() {
         case "audit": return <AdminAudit />;
         case "notifications": return <AdminNotifications />;
         case "config": return <AdminConfig />;
+        case "settings": return <div style={{ maxWidth: 480 }}><h2 style={{ marginBottom: 20 }}>Account settings</h2><ChangePasswordCard /></div>;
       }
     }
 
