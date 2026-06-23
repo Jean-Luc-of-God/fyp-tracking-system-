@@ -1,26 +1,32 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { 
-  Student, 
-  GroupSession, 
-  NotificationLog, 
-  AuditLogEntry, 
-  PendingCoordinationItem, 
-  WhatsAppGroup, 
-  Meeting, 
-  AppState 
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import type {
+  Student,
+  GroupSession,
+  NotificationLog,
+  AuditLogEntry,
+  PendingCoordinationItem,
+  WhatsAppGroup,
+  Meeting,
+  AppState
 } from '../types';
-import { 
-  buildMockStudents, 
-  GROUP_SESSIONS, 
-  NOTIF_LOG, 
-  AUDIT_LOG, 
-  PENDING, 
-  WA_GROUPS, 
-  PREDEFENSE_WA, 
-  AVAILABILITY, 
+import {
+  buildMockStudents,
+  GROUP_SESSIONS,
+  NOTIF_LOG,
+  AUDIT_LOG,
+  PENDING,
+  WA_GROUPS,
+  PREDEFENSE_WA,
+  AVAILABILITY,
   fmt,
   meetingsFor
 } from '../utils/fypData';
+import { getToken } from '../api/client';
+import { studentsApi } from '../api/students';
+import { panelsApi } from '../api/panels';
+import { auditApi, notificationsApi } from '../api/logs';
+import { INDEX_STATE } from '../api/types';
+import { mapStudent, mapAuditLog, mapNotificationLog } from '../utils/mappers';
 
 const LOCAL_STORAGE_KEY = 'fyp_tracker_state_v1';
 
@@ -83,6 +89,10 @@ interface AppContextType {
   
   // Helper queries
   getStudentMeetings: (studentId: string) => Meeting[];
+
+  // Data loading
+  refreshStudents: () => Promise<void>;
+  dataSource: 'mock' | 'api';
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -126,10 +136,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   });
 
-  // Save to localStorage whenever state changes
+  const [dataSource, setDataSource] = useState<'mock' | 'api'>('mock');
+
+  // Persist to localStorage (only mock/local state — API data is re-fetched on load)
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
   }, [state]);
+
+  // Load real students (and logs) from the API whenever a token is available
+  const refreshStudents = useCallback(async () => {
+    if (!getToken()) return;
+    try {
+      const [apiStudents, auditPage, failedNotifs] = await Promise.allSettled([
+        studentsApi.list(),
+        auditApi.list(0, 100),
+        notificationsApi.failed(),
+      ]);
+
+      const mapped = apiStudents.status === 'fulfilled'
+        ? apiStudents.value.map(mapStudent)
+        : null;
+
+      const mappedAudit = auditPage.status === 'fulfilled'
+        ? auditPage.value.content.map(mapAuditLog)
+        : null;
+
+      const mappedNotifs = failedNotifs.status === 'fulfilled'
+        ? failedNotifs.value.map(mapNotificationLog)
+        : null;
+
+      if (mapped) {
+        setState(prev => ({
+          ...prev,
+          students: mapped,
+          ...(mappedAudit ? { auditLogs: mappedAudit } : {}),
+          ...(mappedNotifs ? { notificationLogs: mappedNotifs } : {}),
+        }));
+        setDataSource('api');
+      }
+    } catch {
+      // Backend unreachable — keep mock data silently
+    }
+  }, []);
+
+  // Auto-load from API on mount if already authenticated
+  useEffect(() => {
+    refreshStudents();
+  }, [refreshStudents]);
 
   // Logging helper
   const addAuditLog = (action: string, actor: string, role: string) => {
@@ -175,32 +228,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 2. Timeline Stage transition
-  const advanceStudentStage = (studentId: string, targetStageIndex: number, _note?: string) => {
-    setState(prev => {
-      const updatedStudents = prev.students.map(s => {
-        if (s.id === studentId) {
-          return {
-            ...s,
-            stateIndex: targetStageIndex,
-            enteredStageTs: new Date().toISOString()
-          };
-        }
-        return s;
-      });
-      return {
-        ...prev,
-        students: updatedStudents
-      };
-    });
-
-    const student = state.students.find(s => s.id === studentId);
-    if (student) {
-      addAuditLog(
-        `Transitioned ${student.name} stage to state Index ${targetStageIndex}`,
-        state.activeUserId,
-        state.activeUserRole.toUpperCase()
-      );
+  const advanceStudentStage = async (studentId: string, targetStageIndex: number, note?: string) => {
+    const toState = INDEX_STATE[targetStageIndex];
+    if (getToken() && toState) {
+      try {
+        const updated = await studentsApi.transition(studentId, toState, note);
+        setState(prev => ({
+          ...prev,
+          students: prev.students.map(s =>
+            s.id === studentId
+              ? { ...s, stateIndex: targetStageIndex, enteredStageTs: updated.stateEnteredAt }
+              : s
+          ),
+        }));
+        return;
+      } catch { /* fall through to local update */ }
     }
+    // Local fallback (mock / offline)
+    setState(prev => ({
+      ...prev,
+      students: prev.students.map(s =>
+        s.id === studentId
+          ? { ...s, stateIndex: targetStageIndex, enteredStageTs: new Date().toISOString() }
+          : s
+      ),
+    }));
+    const student = state.students.find(s => s.id === studentId);
+    if (student) addAuditLog(`Transitioned ${student.name} to index ${targetStageIndex}`, state.activeUserId, state.activeUserRole.toUpperCase());
   };
 
   // 3. Request Case Study Letters (HOD)
@@ -479,37 +533,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 10. Book sign-off (pre-defense submission)
-  const signoffBook = (studentId: string) => {
-    // Validate that student has at least one logged meeting
+  const signoffBook = async (studentId: string) => {
+    if (getToken()) {
+      try {
+        const updated = await studentsApi.signOffBook(studentId);
+        setState(prev => ({
+          ...prev,
+          students: prev.students.map(s =>
+            s.id === studentId
+              ? { ...s, bookSignedOff: true, stateIndex: 8, enteredStageTs: updated.stateEnteredAt }
+              : s
+          ),
+        }));
+        return;
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Sign-off failed');
+        return;
+      }
+    }
+    // Local fallback
     const meetingKey = `fyp_meetings_${studentId}`;
     const savedMeetings = localStorage.getItem(meetingKey);
     const meetingsList: Meeting[] = savedMeetings ? JSON.parse(savedMeetings) : meetingsFor(state.students.find(s => s.id === studentId)!);
-    
-    const hasLoggedMeeting = meetingsList.some(m => m.logged && m.attendance === "Present");
-    
-    if (!hasLoggedMeeting) {
+    if (!meetingsList.some(m => m.logged && m.attendance === "Present")) {
       alert("Validation Error: Cannot sign off on final book. The student must have at least one successfully logged supervisor meeting.");
       return;
     }
-
-    setState(prev => {
-      const updatedStudents = prev.students.map(s => {
-        if (s.id === studentId) {
-          return {
-            ...s,
-            bookSignedOff: true,
-            stateIndex: 8,
-            enteredStageTs: new Date().toISOString()
-          };
-        }
-        return s;
-      });
-      return {
-        ...prev,
-        students: updatedStudents
-      };
-    });
-
+    setState(prev => ({
+      ...prev,
+      students: prev.students.map(s =>
+        s.id === studentId ? { ...s, bookSignedOff: true, stateIndex: 8, enteredStageTs: new Date().toISOString() } : s
+      ),
+    }));
     const student = state.students.find(s => s.id === studentId);
     if (student) {
       addAuditLog(`Signed off final year book for ${student.name}`, state.activeUserId, "SUPERVISOR");
@@ -518,72 +573,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 11. Assign supervisor (HOD)
-  const assignSupervisor = (studentId: string, supervisorId: string) => {
-    setState(prev => {
-      const updatedStudents = prev.students.map(s => {
-        if (s.id === studentId) {
-          return {
-            ...s,
-            supervisorId,
-            stateIndex: 7,
-            enteredStageTs: new Date().toISOString()
-          };
-        }
-        return s;
-      });
-      return {
-        ...prev,
-        students: updatedStudents
-      };
-    });
-
-    const student = state.students.find(s => s.id === studentId);
-    const supervisor = state.students.find(s => s.id === supervisorId) || { name: supervisorId };
-    
-    if (student) {
-      addAuditLog(`Assigned supervisor ${supervisor.name} to ${student.name}`, "Dr. Bizimungu", "HOD");
-      addNotification("sup-assigned", student.email, student.name, "Student", studentId);
+  const assignSupervisor = async (studentId: string, supervisorId: string) => {
+    if (getToken()) {
+      try {
+        const updated = await studentsApi.assignSupervisor(studentId, supervisorId);
+        setState(prev => ({
+          ...prev,
+          students: prev.students.map(s =>
+            s.id === studentId
+              ? { ...s, supervisorId: updated.supervisorId, stateIndex: 7, enteredStageTs: updated.stateEnteredAt }
+              : s
+          ),
+        }));
+        return;
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Assign supervisor failed');
+        return;
+      }
     }
+    // Local fallback
+    setState(prev => ({
+      ...prev,
+      students: prev.students.map(s =>
+        s.id === studentId ? { ...s, supervisorId, stateIndex: 7, enteredStageTs: new Date().toISOString() } : s
+      ),
+    }));
+    const student = state.students.find(s => s.id === studentId);
+    if (student) addAuditLog(`Assigned supervisor to ${student.name}`, state.activeUserId, "HOD");
   };
 
   // 12. Assign examiner (Facilitator)
-  const assignExaminer = (studentId: string, examinerId: string, panelType: 'predefense' | 'defense') => {
+  const assignExaminer = async (studentId: string, examinerId: string, panelType: 'predefense' | 'defense') => {
     const student = state.students.find(s => s.id === studentId);
-    
     if (student && student.supervisorId === examinerId) {
       alert("Conflict of Interest Blocked: A student's supervisor cannot be assigned as their examiner.");
       return;
     }
 
-    setState(prev => {
-      const updatedStudents = prev.students.map(s => {
-        if (s.id === studentId) {
-          if (panelType === 'predefense') {
-            return {
-              ...s,
-              examinerPreId: examinerId,
-              predefenseStatus: 'Scheduled' as const,
-              stateIndex: 9,
-              enteredStageTs: new Date().toISOString()
-            };
-          } else {
-            return {
-              ...s,
-              examinerDefId: examinerId
-            };
-          }
-        }
-        return s;
-      });
-      return {
-        ...prev,
-        students: updatedStudents
-      };
-    });
-
-    if (student) {
-      addAuditLog(`Assigned examiner ${examinerId} to ${student.name} for ${panelType}`, "Ms. Ingabire", "FACILITATOR");
+    if (getToken()) {
+      try {
+        const backendType = panelType === 'predefense' ? 'PRE_DEFENSE' : 'DEFENSE';
+        await panelsApi.assign(studentId, examinerId, backendType);
+        setState(prev => ({
+          ...prev,
+          students: prev.students.map(s => {
+            if (s.id !== studentId) return s;
+            return panelType === 'predefense'
+              ? { ...s, examinerPreId: examinerId, predefenseStatus: 'Scheduled' as const, stateIndex: 9, enteredStageTs: new Date().toISOString() }
+              : { ...s, examinerDefId: examinerId };
+          }),
+        }));
+        return;
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Assign examiner failed');
+        return;
+      }
     }
+    // Local fallback
+    setState(prev => ({
+      ...prev,
+      students: prev.students.map(s => {
+        if (s.id !== studentId) return s;
+        return panelType === 'predefense'
+          ? { ...s, examinerPreId: examinerId, predefenseStatus: 'Scheduled' as const, stateIndex: 9, enteredStageTs: new Date().toISOString() }
+          : { ...s, examinerDefId: examinerId };
+      }),
+    }));
+    if (student) addAuditLog(`Assigned examiner to ${student.name} for ${panelType}`, state.activeUserId, "FACILITATOR");
   };
 
   // 13. Record pre-defense outcome (Examiner)
@@ -750,7 +806,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addGroupSession,
       takeGroupAttendance,
       updateAvailability,
-      getStudentMeetings
+      getStudentMeetings,
+      refreshStudents,
+      dataSource,
     }}>
       {children}
     </AppContext.Provider>

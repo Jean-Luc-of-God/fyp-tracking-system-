@@ -80,7 +80,7 @@ function skeletonKind(page: string) {
 }
 
 function MainApp() {
-  const { students, notificationLogs, letters, switchUser } = useAppContext();
+  const { students, notificationLogs, letters, switchUser, refreshStudents } = useAppContext();
   const { login: apiLogin } = useAuth();
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState<'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin'>("facilitator");
@@ -125,6 +125,8 @@ function MainApp() {
     setPage(firstPage(r));
     setAuthed(true);
     setTimeout(() => greetUser(r, authUser.fullName), 480);
+    // Reload students from API with fresh token
+    refreshStudents();
     return r;
   }
 
