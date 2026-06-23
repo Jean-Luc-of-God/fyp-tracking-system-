@@ -35,6 +35,7 @@ public class ProposalAttempt {
     private User reviewedBy;
 
     @Column(name = "submitted_at", nullable = false, updatable = false)
+    @Builder.Default
     private Instant submittedAt = Instant.now();
 
     @Column(name = "reviewed_at")

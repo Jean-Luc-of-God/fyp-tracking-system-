@@ -38,5 +38,6 @@ public class StateTransition {
     private String note;
 
     @Column(name = "created_at", nullable = false, updatable = false)
+    @Builder.Default
     private Instant createdAt = Instant.now();
 }

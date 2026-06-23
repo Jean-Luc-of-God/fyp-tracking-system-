@@ -36,6 +36,7 @@ public class Student {
     private StudentState state = StudentState.REGISTERED;
 
     @Column(name = "state_entered_at", nullable = false)
+    @Builder.Default
     private Instant stateEnteredAt = Instant.now();
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -57,9 +58,11 @@ public class Student {
     private String note;
 
     @Column(name = "created_at", nullable = false, updatable = false)
+    @Builder.Default
     private Instant createdAt = Instant.now();
 
     @Column(name = "updated_at", nullable = false)
+    @Builder.Default
     private Instant updatedAt = Instant.now();
 
     @PreUpdate

@@ -4,7 +4,7 @@ INSERT INTO users (id, email, password_hash, full_name, phone, role, enabled)
 VALUES (
     uuid_generate_v4(),
     'admin@aauca.ac.rw',
-    '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TlFcJ1F.6T2nF3X8bV.7QhYqO6Ky',
+    '$2b$12$k1yFf4SRyyNL2f0WBXy6J.DhhrMUHblh.qraMRGyIvijZeVmB8Gvm',
     'System Administrator',
     NULL,
     'SUPERADMIN',

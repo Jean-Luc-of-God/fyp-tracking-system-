@@ -42,5 +42,6 @@ public class PanelAssignment {
     private User assignedBy;
 
     @Column(name = "assigned_at", nullable = false, updatable = false)
+    @Builder.Default
     private Instant assignedAt = Instant.now();
 }

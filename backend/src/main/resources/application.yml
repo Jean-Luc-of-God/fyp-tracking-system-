@@ -55,6 +55,14 @@ app:
     base-url: ${PROTO_API_URL:http://stub}
     enabled: ${PROTO_API_ENABLED:false}
 
+management:
+  endpoint:
+    health:
+      show-details: always
+  health:
+    mail:
+      enabled: false
+
 logging:
   level:
     rw.aauca.fyp: DEBUG
