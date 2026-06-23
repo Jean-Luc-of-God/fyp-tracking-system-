@@ -1,30 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAppContext } from '../context/AppContext';
-import type { Student, GroupSession } from '../types';
-import { 
-  Icon, 
-  Badge, 
-  Avatar, 
-  StateBadge, 
-  EmptyState, 
-  SectionTitle, 
+import type { Student, GroupSession, Meeting } from '../types';
+import {
+  Icon,
+  Badge,
+  Avatar,
+  StateBadge,
+  EmptyState,
+  SectionTitle,
   WhatsAppButton,
   Modal
 } from '../components/SharedUI';
 import { useNow } from '../components/LetterUI';
 import { Timeline } from '../components/Timeline';
-import { 
-  WeeklyAvailabilityGrid, 
-  GroupSessionCard, 
-  defaultAttendance 
+import {
+  WeeklyAvailabilityGrid,
+  GroupSessionCard,
+  defaultAttendance
 } from '../components/AvailabilityUI';
-import { 
-  fmt, 
-  fmtT, 
-  fmtFull, 
-  supById 
+import {
+  fmt,
+  fmtT,
+  fmtFull,
+  supById
 } from '../utils/fypData';
 import { notify } from '../components/LetterUI';
+import { supervisionApi } from '../api/supervision';
+import { mapMeeting } from '../utils/mappers';
+import { getToken } from '../api/client';
 
 interface SupervisorDashboardProps {
   onOpen: (page: string, id: string) => void;
@@ -273,24 +276,95 @@ const AttendanceModal: React.FC<AttendanceModalProps> = ({ session, students, in
 };
 
 /* ---------------- Weekly availability + group sessions ---------------- */
+// Map "Mon" → "MONDAY" for the API
+const DAY_MAP: Record<string, string> = {
+  Mon: 'MONDAY', Tue: 'TUESDAY', Wed: 'WEDNESDAY', Thu: 'THURSDAY', Fri: 'FRIDAY',
+};
+// Next hour string (09:00 → 10:00)
+function nextHour(t: string) {
+  const [h, m] = t.split(':').map(Number);
+  return String(h + 1).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
 export const SupAvailability: React.FC = () => {
   const { availability, groupSessions, students, activeUserId, updateAvailability, addGroupSession, takeGroupAttendance } = useAppContext();
   const SUP_ID = activeUserId || "sup-hab";
   const mine = students.filter(s => s.supervisorId === SUP_ID);
 
-  const [sel, setSel] = useState<{ [slot: string]: number }>(() => { 
-    const a = { ...(availability[SUP_ID] || {}) }; 
-    delete a.location; 
-    return a as { [slot: string]: number }; 
+  const [sel, setSel] = useState<{ [slot: string]: number }>(() => {
+    const a = { ...(availability[SUP_ID] || {}) };
+    delete a.location;
+    return a as { [slot: string]: number };
   });
   const [saved, setSaved] = useState(true);
   const [location, setLocation] = useState((availability[SUP_ID] || {}).location || "");
-  
-  const toggle = (k: string) => { 
-    setSel(s => ({ ...s, [k]: s[k] ? 0 : 1 })); 
-    setSaved(false); 
+  const [slotIds, setSlotIds] = useState<Record<string, string>>({}); // slotKey → API id
+  const [publishing, setPublishing] = useState(false);
+
+  // Load real slots from API on mount
+  useEffect(() => {
+    if (!getToken()) return;
+    supervisionApi.mySlots().then(slots => {
+      const map: { [k: string]: number } = {};
+      const ids: Record<string, string> = {};
+      for (const s of slots) {
+        // Find the matching AVAIL_DAYS abbreviation
+        const dayAbbr = Object.entries(DAY_MAP).find(([, v]) => v === s.dayOfWeek)?.[0];
+        if (dayAbbr && s.startTime) {
+          const k = dayAbbr + '-' + s.startTime;
+          map[k] = 1;
+          ids[k] = s.id;
+        }
+      }
+      setSel(map);
+      setSlotIds(ids);
+      setSaved(true);
+    }).catch(() => {/* keep mock state */});
+  }, []);
+
+  const toggle = (k: string) => {
+    setSel(s => ({ ...s, [k]: s[k] ? 0 : 1 }));
+    setSaved(false);
   };
   const count = Object.values(sel).filter(Boolean).length;
+
+  async function handlePublish() {
+    if (getToken()) {
+      setPublishing(true);
+      try {
+        // DELETE slots that were turned off
+        for (const [k, id] of Object.entries(slotIds)) {
+          if (!sel[k]) {
+            await supervisionApi.deleteSlot(id);
+          }
+        }
+        // POST newly enabled slots
+        const newIds = { ...slotIds };
+        for (const [k, on] of Object.entries(sel)) {
+          if (on && !slotIds[k]) {
+            const [day, time] = k.split('-');
+            const created = await supervisionApi.addSlot({
+              dayOfWeek: DAY_MAP[day] || day,
+              startTime: time,
+              endTime: nextHour(time),
+              location: location || undefined,
+            });
+            newIds[k] = created.id;
+          }
+        }
+        setSlotIds(newIds);
+      } catch (e) {
+        notify(e instanceof Error ? e.message : 'Failed to save slots', 'error');
+        setPublishing(false);
+        return;
+      } finally {
+        setPublishing(false);
+      }
+    }
+    updateAvailability(SUP_ID, sel, location);
+    setSaved(true);
+    notify("Weekly availability published", "success");
+  }
 
   const sessions = groupSessions.filter(g => g.supervisorId === SUP_ID);
   const [attFor, setAttFor] = useState<GroupSession | null>(null);
@@ -324,12 +398,8 @@ export const SupAvailability: React.FC = () => {
         <div className="card">
           <div className="card-hd">
             <h3>Weekly office hours</h3>
-            <button className="btn btn-primary btn-sm" disabled={saved} onClick={() => { 
-              updateAvailability(SUP_ID, sel, location);
-              setSaved(true); 
-              notify("Weekly availability published", "success"); 
-            }}>
-              {saved ? <><Icon name="check" size={14} /> Published</> : "Publish"}
+            <button className="btn btn-primary btn-sm" disabled={saved || publishing} onClick={handlePublish}>
+              {publishing ? "Saving…" : saved ? <><Icon name="check" size={14} /> Published</> : "Publish"}
             </button>
           </div>
           <div className="card-pad">
@@ -416,18 +486,18 @@ interface MeetingSchedulerProps {
 }
 
 const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ stu, confirmed, onConfirmedChange }) => {
-  const { scheduleMeeting, rescheduleMeeting } = useAppContext();
   const now = useNow(15000);
   const pad = (n: number) => String(n).padStart(2, "0");
   const seedDate = stu.nextMeeting ? new Date(stu.nextMeeting.ts) : new Date(Date.now() + 3 * 86400000);
-  
+
   const [date, setDate] = useState(seedDate.getFullYear() + "-" + pad(seedDate.getMonth() + 1) + "-" + pad(seedDate.getDate()));
   const [time, setTime] = useState(pad(seedDate.getHours()) + ":" + pad(seedDate.getMinutes()));
   const [type, setType] = useState<'meet' | 'inperson'>("inperson");
   const [location, setLocation] = useState("Office B-204");
   const [purpose, setPurpose] = useState("Pre-submission review");
   const link = "meet.google.com/qra-vkdb-7yz";
-  
+  const [saving, setSaving] = useState(false);
+
   const [editing, setEditing] = useState(!confirmed);
   const [resched, setResched] = useState(false);
   const [rDate, setRDate] = useState(date);
@@ -441,46 +511,71 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ stu, confirmed, onC
   const iso = meetingTs.toISOString();
   const label = fmt(iso) + " · " + fmtT(iso);
 
-  function confirm() { 
-    scheduleMeeting(stu.id, iso, type, type === 'meet' ? link : location, purpose);
-    onConfirmedChange(true); 
-    setEditing(false); 
-    notify("Meeting confirmed — " + label, "success"); 
+  async function confirm() {
+    setSaving(true);
+    try {
+      if (getToken()) {
+        await supervisionApi.scheduleMeeting({
+          studentId: stu.id,
+          scheduledAt: iso,
+          topic: purpose,
+          meetingType: type === 'meet' ? 'ONLINE' : 'IN_PERSON',
+          location: type === 'inperson' ? location : undefined,
+          meetLink: type === 'meet' ? link : undefined,
+        });
+      }
+      onConfirmedChange(true);
+      setEditing(false);
+      notify("Meeting confirmed — " + label, "success");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to schedule meeting', 'error');
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function openResched() { 
-    setRDate(date); 
-    setRTime(time); 
-    setReason(""); 
-    setResched(true); 
+  function openResched() {
+    setRDate(date);
+    setRTime(time);
+    setReason("");
+    setResched(true);
   }
 
-  function saveResched() {
+  async function saveResched() {
     if (!reason.trim()) return;
     const prev = { date, time };
     const newTs = new Date(rDate + "T" + (rTime || "00:00") + ":00").toISOString();
-    rescheduleMeeting(stu.id, stu.id, newTs, reason); // custom meetingId maps to studentId in stub
-    
-    const histEntry = { 
-      from: label, 
-      to: fmt(newTs) + " · " + fmtT(newTs), 
-      reason, 
-      ts: Date.now() 
-    };
-    setHistory(h => [histEntry, ...h]);
-    setDate(rDate); 
-    setTime(rTime); 
-    setResched(false); 
-    onConfirmedChange(true);
-    
-    notify("Meeting rescheduled — student notified with your reason", { 
-      tone: "success",
-      undo: () => { 
-        setDate(prev.date); 
-        setTime(prev.time); 
-        setHistory(h => h.filter(x => x !== histEntry)); 
-      } 
-    });
+    setSaving(true);
+    try {
+      if (getToken()) {
+        await supervisionApi.scheduleMeeting({
+          studentId: stu.id,
+          scheduledAt: newTs,
+          topic: purpose,
+          meetingType: type === 'meet' ? 'ONLINE' : 'IN_PERSON',
+          location: type === 'inperson' ? location : undefined,
+          meetLink: type === 'meet' ? link : undefined,
+        });
+      }
+      const histEntry = { from: label, to: fmt(newTs) + " · " + fmtT(newTs), reason, ts: Date.now() };
+      setHistory(h => [histEntry, ...h]);
+      setDate(rDate);
+      setTime(rTime);
+      setResched(false);
+      onConfirmedChange(true);
+      notify("Meeting rescheduled — student notified with your reason", {
+        tone: "success",
+        undo: () => {
+          setDate(prev.date);
+          setTime(prev.time);
+          setHistory(h => h.filter(x => x !== histEntry));
+        }
+      });
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to reschedule', 'error');
+    } finally {
+      setSaving(false);
+    }
   }
 
   const TypeChip = ({ v, icon, label: text }: { v: 'meet' | 'inperson'; icon: string; label: string }) => (
@@ -530,7 +625,7 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ stu, confirmed, onC
           <label className="field-label">Reason for rescheduling (required — shared with the student)</label>
           <textarea className="input" rows={2} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Clashing faculty meeting — moving to the afternoon." style={{ marginBottom: 10 }} />
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-primary btn-sm" onClick={saveResched} disabled={!reason.trim()}><Icon name="check" size={14} /> Save &amp; notify student</button>
+            <button className="btn btn-primary btn-sm" onClick={saveResched} disabled={!reason.trim() || saving}><Icon name="check" size={14} /> {saving ? "Saving…" : "Save & notify student"}</button>
             <button className="btn btn-quiet btn-sm" onClick={() => setResched(false)}>Cancel</button>
           </div>
         </div>
@@ -557,7 +652,7 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ stu, confirmed, onC
           )}
           <div style={{ marginBottom: 14 }}><label className="field-label">Purpose</label><input className="input" value={purpose} onChange={e => setPurpose(e.target.value)} /></div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-primary" onClick={confirm}><Icon name="check" size={15} /> Confirm date &amp; time</button>
+            <button className="btn btn-primary" onClick={confirm} disabled={saving}><Icon name="check" size={15} /> {saving ? "Saving…" : "Confirm date & time"}</button>
             {confirmed && <button className="btn btn-quiet" onClick={() => setEditing(false)}>Cancel</button>}
           </div>
         </div>
@@ -584,16 +679,16 @@ interface SupSupervisionProps {
 }
 
 export const SupSupervision: React.FC<SupSupervisionProps> = ({ focusStudent }) => {
-  const { students, activeUserId, getStudentMeetings, logMeetingAttendance, signoffBook } = useAppContext();
+  const { students, activeUserId, getStudentMeetings, signoffBook } = useAppContext();
   const SUP_ID = activeUserId || "sup-hab";
   const sup = supById[SUP_ID] || { name: "Supervisor" };
   const mine = students.filter(s => s.supervisorId === SUP_ID);
 
   const [sel, setSel] = useState(focusStudent && mine.find(s => s.id === focusStudent) ? focusStudent : (mine[0] && mine[0].id));
-  
-  useEffect(() => { 
+
+  useEffect(() => {
     if (focusStudent && mine.find(s => s.id === focusStudent)) {
-      setSel(focusStudent); 
+      setSel(focusStudent);
     }
   }, [focusStudent, mine]);
 
@@ -603,23 +698,57 @@ export const SupSupervision: React.FC<SupSupervisionProps> = ({ focusStudent }) 
   const [logging, setLogging] = useState(false);
   const [form, setForm] = useState({ topic: "", attendance: "Present", notes: "" });
 
+  // Real meetings loaded from API (keyed by studentId)
+  const [apiMeetings, setApiMeetings] = useState<Meeting[] | null>(null);
+  const [meetingSaving, setMeetingSaving] = useState(false);
+
+  const loadMeetings = useCallback((studentId: string) => {
+    if (!getToken()) return;
+    supervisionApi.meetingsByStudent(studentId)
+      .then(list => setApiMeetings(list.map(mapMeeting)))
+      .catch(() => setApiMeetings(null));
+  }, []);
+
   useEffect(() => {
     if (stu) {
       setConfirmed(stu.nextMeeting ? stu.nextMeeting.confirmed : false);
       setLogging(false);
+      setApiMeetings(null);
+      loadMeetings(stu.id);
     }
-  }, [sel, stu]);
+  }, [sel, stu, loadMeetings]);
 
   if (!stu) return <EmptyState title="No students" sub="You are not supervising any students in this cohort." />;
 
-  const meetings = getStudentMeetings(stu.id);
+  const meetings = apiMeetings ?? getStudentMeetings(stu.id);
   const signedOff = stu.stateIndex >= 8;
 
-  function handleLogMeeting() {
-    logMeetingAttendance(stu!.id, "M-" + Date.now(), form.attendance, form.topic + ": " + form.notes);
-    setForm({ topic: "", attendance: "Present", notes: "" }); 
-    setLogging(false);
-    notify("Meeting logged to the record", "success");
+  async function handleLogMeeting() {
+    setMeetingSaving(true);
+    try {
+      if (getToken()) {
+        // Create the meeting as already-happened (now), then record outcome
+        const created = await supervisionApi.scheduleMeeting({
+          studentId: stu!.id,
+          scheduledAt: new Date().toISOString(),
+          topic: form.topic,
+          meetingType: 'IN_PERSON',
+        });
+        await supervisionApi.recordOutcome(
+          created.id,
+          form.attendance === 'Present',
+          form.notes || undefined
+        );
+        await loadMeetings(stu!.id);
+      }
+      setForm({ topic: "", attendance: "Present", notes: "" });
+      setLogging(false);
+      notify("Meeting logged to the record", "success");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to log meeting', 'error');
+    } finally {
+      setMeetingSaving(false);
+    }
   }
 
   function handleSignoff() {
@@ -707,8 +836,10 @@ export const SupSupervision: React.FC<SupSupervisionProps> = ({ focusStudent }) 
                 <label className="field-label">Notes</label>
                 <textarea className="input" rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Action items, decisions…" style={{ marginBottom: 10 }} />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn btn-primary btn-sm" onClick={handleLogMeeting}>Save to record</button>
-                  <button className="btn btn-quiet btn-sm" onClick={() => setLogging(false)}>Cancel</button>
+                  <button className="btn btn-primary btn-sm" onClick={handleLogMeeting} disabled={meetingSaving}>
+                    {meetingSaving ? "Saving…" : "Save to record"}
+                  </button>
+                  <button className="btn btn-quiet btn-sm" onClick={() => setLogging(false)} disabled={meetingSaving}>Cancel</button>
                 </div>
               </div>
             )}

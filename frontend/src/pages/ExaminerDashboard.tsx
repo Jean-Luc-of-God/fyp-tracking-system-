@@ -231,65 +231,128 @@ export const ExaminerPredefense: React.FC = () => {
 };
 
 /* ---------------- Examiner Defense ---------------- */
+const DEFENSE_OUTCOMES: { value: 'PASSED' | 'REFERRED' | 'FAILED'; label: string }[] = [
+  { value: 'PASSED',   label: 'Passed' },
+  { value: 'REFERRED', label: 'Referred — minor corrections required' },
+  { value: 'FAILED',   label: 'Failed — re-defense required' },
+];
+
 export const ExaminerDefense: React.FC = () => {
-  const { students, activeUserId, recordDefenseOutcome } = useAppContext();
+  const { students, activeUserId, refreshStudents } = useAppContext();
   const EX_ID = activeUserId || "sup-hab";
-  
-  const list = students.filter(s => s.examinerDefId === EX_ID || s.stateIndex === 10).slice(0, 4);
-  const [outcomes, setOutcomes] = useState<{ [studentId: string]: string }>({});
-  const opts = ["Passed", "Passed with minor corrections", "Passed with major corrections", "Failed — re-defense"];
+
+  const [panels, setPanels] = useState<PanelAssignmentResponse[] | null>(null);
+  const [recording, setRecording] = useState<{ [panelId: string]: boolean }>({});
+
+  useEffect(() => {
+    if (!getToken()) return;
+    panelsApi.mine()
+      .then(list => setPanels(list.filter(p => p.panelType === 'DEFENSE')))
+      .catch(() => setPanels(null));
+  }, [EX_ID]);
+
+  async function doRecord(panel: PanelAssignmentResponse, outcome: 'PASSED' | 'REFERRED' | 'FAILED') {
+    setRecording(r => ({ ...r, [panel.id]: true }));
+    try {
+      await panelsApi.recordOutcome(panel.id, outcome, undefined);
+      const stuName = students.find(s => s.id === panel.studentId)?.name ?? 'Student';
+      const label = DEFENSE_OUTCOMES.find(o => o.value === outcome)?.label ?? outcome;
+      notify(`${stuName}: ${label}`, outcome === 'PASSED' ? 'success' : 'info');
+      await refreshStudents();
+      const updated = await panelsApi.mine();
+      setPanels(updated.filter(p => p.panelType === 'DEFENSE'));
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to record outcome', 'error');
+    } finally {
+      setRecording(r => ({ ...r, [panel.id]: false }));
+    }
+  }
+
+  const useRealPanels = getToken() && panels !== null;
+  const mockList = students.filter(s => s.examinerDefId === EX_ID || s.stateIndex === 10).slice(0, 4);
 
   return (
     <div>
       <SectionTitle sub="Record the final defense outcome for each student. This ends their FYP journey.">
         Defense Outcomes
       </SectionTitle>
-      
-      <div style={{ display: "grid", gap: 14 }}>
-        {list.map(s => {
-          const rec = outcomes[s.id] || s.defense?.outcome;
-          return (
-            <div key={s.id} className="card card-pad">
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
-                <div style={{ display: "flex", gap: 13, alignItems: "center" }}>
-                  <Avatar name={s.name} role="Student" size={42} />
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>
-                      {s.name} <span className="mono muted" style={{ fontSize: 11, fontWeight: 400 }}>{s.id}</span>
+
+      {useRealPanels ? (
+        <div style={{ display: "grid", gap: 14 }}>
+          {panels!.length === 0 && (
+            <div className="card card-pad muted" style={{ fontSize: 13 }}>No defense panels assigned to you yet.</div>
+          )}
+          {panels!.map(p => {
+            const stu = students.find(s => s.id === p.studentId);
+            const recorded = p.outcome;
+            const outLabel = DEFENSE_OUTCOMES.find(o => o.value === recorded)?.label ?? recorded;
+            return (
+              <div key={p.id} className="card card-pad">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 13, alignItems: "center" }}>
+                    <Avatar name={stu?.name ?? p.studentId} role="Student" size={42} />
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>{stu?.name ?? p.studentId}</div>
+                      <div className="muted" style={{ fontSize: 12.5 }}>{stu?.topic ?? ''}</div>
                     </div>
-                    <div className="muted" style={{ fontSize: 12.5 }}>{s.topic}</div>
                   </div>
+                  {recorded ? (
+                    <Badge tone={recorded === 'FAILED' ? "red" : recorded === 'REFERRED' ? "amber" : "green"} dot>{outLabel}</Badge>
+                  ) : (
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <select
+                        className="select"
+                        style={{ width: 260, height: 36 }}
+                        defaultValue=""
+                        disabled={!!recording[p.id]}
+                        onChange={e => {
+                          if (e.target.value) doRecord(p, e.target.value as 'PASSED' | 'REFERRED' | 'FAILED');
+                        }}
+                      >
+                        <option value="" disabled>{recording[p.id] ? "Saving…" : "Record outcome…"}</option>
+                        {DEFENSE_OUTCOMES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
-                {rec ? (
-                  <Badge tone={rec.startsWith("Failed") ? "red" : "green"} dot>{rec}</Badge>
-                ) : (
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <select 
-                      className="select" 
-                      style={{ width: 240, height: 36 }} 
-                      defaultValue="" 
-                      onChange={e => {
-                        if (e.target.value) {
-                          recordDefenseOutcome(s.id, e.target.value, "Panel A");
-                          setOutcomes(o => ({ ...o, [s.id]: e.target.value }));
-                        }
-                      }}
-                    >
-                      <option value="" disabled>Record outcome…</option>
-                      {opts.map(o => <option key={o}>{o}</option>)}
-                    </select>
+                {recorded && (
+                  <div style={{ marginTop: 12, padding: "10px 13px", background: recorded === 'FAILED' ? "var(--red-bg)" : "var(--green-bg)", borderRadius: 8, fontSize: 12.5, color: recorded === 'FAILED' ? "var(--red)" : "var(--green-deep)", display: "flex", alignItems: "center", gap: 8 }}>
+                    <Icon name={recorded === 'FAILED' ? "alert" : "checkCircle"} size={15} /> Outcome recorded &amp; student notified.
                   </div>
                 )}
               </div>
-              {rec && (
-                <div style={{ marginTop: 12, padding: "10px 13px", background: "var(--green-bg)", borderRadius: 8, fontSize: 12.5, color: "var(--green-deep)", display: "flex", alignItems: "center", gap: 8 }}>
-                  <Icon name="checkCircle" size={15} /> Outcome recorded &amp; student notified by email · journey complete.
+            );
+          })}
+        </div>
+      ) : (
+        // Mock fallback
+        <div style={{ display: "grid", gap: 14 }}>
+          {mockList.map(s => {
+            const rec = s.defense?.outcome;
+            return (
+              <div key={s.id} className="card card-pad">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 13, alignItems: "center" }}>
+                    <Avatar name={s.name} role="Student" size={42} />
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>{s.name} <span className="mono muted" style={{ fontSize: 11, fontWeight: 400 }}>{s.id}</span></div>
+                      <div className="muted" style={{ fontSize: 12.5 }}>{s.topic}</div>
+                    </div>
+                  </div>
+                  {rec ? (
+                    <Badge tone="green" dot>{rec}</Badge>
+                  ) : (
+                    <select className="select" style={{ width: 240, height: 36 }} defaultValue="" onChange={() => {}}>
+                      <option value="" disabled>Record outcome…</option>
+                      {DEFENSE_OUTCOMES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
