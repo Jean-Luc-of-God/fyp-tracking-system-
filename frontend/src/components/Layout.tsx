@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Avatar, Icon } from './SharedUI';
 import { NotifBell } from './Notifications';
+import { useAppContext } from '../context/AppContext';
 
 export interface RoleInfo {
   id: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin';
@@ -42,7 +43,8 @@ export const NAV: { [role: string]: { id: string; label: string; icon: string; b
     { id: "risk", label: "Risk Dashboard", icon: "shield" },
     { id: "escalation", label: "Escalation Ladder", icon: "activity" },
     { id: "students", label: "All Students", icon: "list" },
-    { id: "pending", label: "Pending Coordination", icon: "alert", badge: 5 },
+    { id: "pending", label: "Pending Coordination", icon: "alert" },
+    { id: "proto-review", label: "Prototype Review", icon: "layers" },
     { id: "supervisors", label: "Assign Supervisors", icon: "users" },
     { id: "examiners", label: "Assign Pre-Defense", icon: "scale" },
     { id: "availability", label: "Supervisor Availability", icon: "calendar" },
@@ -55,7 +57,10 @@ export const NAV: { [role: string]: { id: string; label: string; icon: string; b
     { id: "find", label: "Find Students", icon: "search" },
     { id: "upload", label: "Upload Students", icon: "upload" },
     { id: "request", label: "Request Letters", icon: "send" },
-    { id: "review", label: "Review Letters", icon: "checkCircle", badge: 2 },
+    { id: "review", label: "Review Letters", icon: "checkCircle" },
+    { id: "proto-review", label: "Prototype Review", icon: "layers" },
+    { id: "supervisors", label: "Assign Supervisors", icon: "users" },
+    { id: "examiners", label: "Assign Pre-Defense", icon: "scale" },
     { id: "mysupervision", label: "My Supervision", icon: "activity" },
     { id: "availability", label: "Supervisor Availability", icon: "calendar" },
     { id: "records", label: "Records & Reports", icon: "list" },
@@ -153,6 +158,13 @@ export const AppShell: React.FC<AppShellProps> = ({
   onLogout,
   userFullName
 }) => {
+  const { students } = useAppContext();
+
+  // Live badge counts keyed by nav item id
+  const liveBadges: Record<string, number> = {
+    'review': students.filter(s => s.stateIndex === 1).length,           // CASE_LETTER_SUBMITTED
+    'proto-review': students.filter(s => s.stateIndex === 2 || s.stateIndex === 3).length, // needs action
+  };
   const cur = roleById[role];
   const nav = NAV[role] || [];
   const [drawer, setDrawer] = useState(false);
@@ -170,15 +182,10 @@ export const AppShell: React.FC<AppShellProps> = ({
       <aside className={"app-sidebar" + (drawer ? " open" : "")}>
         <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "16px 16px 14px" }}>
           <div style={{ width: 38, height: 38, borderRadius: 9, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flex: "none", overflow: "hidden" }}>
-            <img src="assets/aauca-logo.jpg" alt="AUCA" style={{ width: 34, height: 34, objectFit: "contain" }} 
-                 onError={(e) => {
-                   // Fallback if logo doesn't exist
-                   e.currentTarget.style.display = 'none';
-                 }} />
-            <Icon name="building" size={24} style={{ color: 'var(--navy)' }} />
+            <img src="/aauca-logo.jpg" alt="AUCA" style={{ width: 34, height: 34, objectFit: "contain" }} />
           </div>
           <div style={{ lineHeight: 1.15 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 700, color: "#fff", letterSpacing: "-.01em" }}>FYP Tracker</div>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: "#fff", letterSpacing: "-.01em" }}>Final Year Project Tracker</div>
             <div style={{ fontSize: 10.5, color: "var(--on-navy-dim)" }}>AUCA · Software Eng.</div>
           </div>
         </div>
@@ -210,7 +217,7 @@ export const AppShell: React.FC<AppShellProps> = ({
                 {active && <span style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 3, borderRadius: 3, background: "var(--amber)" }} />}
                 <Icon name={n.icon} size={17} style={{ color: active ? "var(--amber)" : "var(--on-navy-dim)", flex: "none" }} />
                 <span style={{ flex: 1 }}>{n.label}</span>
-                {n.badge && <span className="badge" style={{ height: 18, minWidth: 18, justifyContent: "center", padding: "0 5px", background: "var(--red)", color: "#fff", fontSize: 10.5 }}>{n.badge}</span>}
+                {(liveBadges[n.id] ?? n.badge) ? <span className="badge" style={{ height: 18, minWidth: 18, justifyContent: "center", padding: "0 5px", background: "var(--red)", color: "#fff", fontSize: 10.5 }}>{liveBadges[n.id] ?? n.badge}</span> : null}
               </button>
             );
           })}
@@ -301,7 +308,7 @@ export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onLogin }) => {
 
         <div style={{ display: "flex", alignItems: "center", gap: 13, position: "relative" }}>
           <div style={{ width: 48, height: 48, borderRadius: 11, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flex: "none" }}>
-            <Icon name="building" size={28} style={{ color: 'var(--navy)' }} />
+            <img src="/aauca-logo.jpg" alt="AUCA" style={{ width: 44, height: 44, objectFit: "contain" }} />
           </div>
           <div style={{ maxWidth: 360 }}>
             <div style={{ fontWeight: 700, fontSize: 13.5, lineHeight: 1.3, whiteSpace: "nowrap" }}>Adventist University of Central Africa</div>
@@ -310,8 +317,7 @@ export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onLogin }) => {
         </div>
 
         <div style={{ position: "relative", maxWidth: 440 }}>
-          <div className="badge badge-solid-amber" style={{ marginBottom: 18 }}>FINAL YEAR PROJECT · CLASS OF 2026</div>
-          <h1 style={{ color: "#fff", fontSize: 34, lineHeight: 1.15, letterSpacing: "-.02em", fontWeight: 600 }}>FYP Tracking &amp;<br />Accountability System</h1>
+<h1 style={{ color: "#fff", fontSize: 34, lineHeight: 1.15, letterSpacing: "-.02em", fontWeight: 600 }}>Final Year Project<br />Tracking & Accountability</h1>
           <p style={{ color: "var(--on-navy-dim)", fontSize: 15, marginTop: 16, lineHeight: 1.6 }}>
             One continuous, auditable timeline of every step a student passes through — who did what, and when — from registration to defense. No more guessing. No more blame by assumption.
           </p>

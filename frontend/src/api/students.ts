@@ -24,6 +24,12 @@ export const studentsApi = {
     phone?: string; org?: string; groupLabel?: string; password?: string;
   }) => api.post<StudentResponse>('/api/students/create', data),
 
+  updateMyDetails: (data: { projectTopic?: string; organisation?: string; groupLabel?: string }) =>
+    api.patch<StudentResponse>('/api/students/me/details', data),
+
+  rejectCaseLetter: (studentId: string, reason: string) =>
+    api.post<StudentResponse>(`/api/students/${studentId}/reject-case-letter`, { reason }),
+
   signOffBook: (studentId: string) =>
     api.patch<StudentResponse>(`/api/students/${studentId}/sign-off-book`),
 

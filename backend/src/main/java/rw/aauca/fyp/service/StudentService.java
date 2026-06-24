@@ -3,6 +3,7 @@ package rw.aauca.fyp.service;
 import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +50,18 @@ public class StudentService {
     }
 
     @Transactional
+    public Student updateDetails(UUID studentId, String projectTopic, String organisation,
+                                  String groupLabel, User actor) {
+        Student student = getById(studentId);
+        if (projectTopic  != null) student.setProjectTopic(projectTopic.isBlank()  ? null : projectTopic.trim());
+        if (organisation  != null) student.setOrganisation(organisation.isBlank()  ? null : organisation.trim());
+        if (groupLabel    != null) student.setGroupLabel(groupLabel.isBlank()       ? null : groupLabel.trim());
+        student = studentRepository.save(student);
+        auditService.log(actor, "UPDATE_DETAILS", "Student", student.getId(), "Updated project details", null);
+        return student;
+    }
+
+    @Transactional
     public Student assignSupervisor(UUID studentId, UUID supervisorId, User actor) {
         Student student = getById(studentId);
         User supervisor = userRepository.findById(supervisorId)
@@ -70,6 +83,9 @@ public class StudentService {
     @Transactional
     public Student signOffBook(UUID studentId, User supervisor) {
         Student student = getById(studentId);
+        if (student.getSupervisor() == null || !student.getSupervisor().getId().equals(supervisor.getId())) {
+            throw new AccessDeniedException("You are not the assigned supervisor for this student");
+        }
         student.setBookSignedOff(true);
         stateService.transition(student, StudentState.BOOK_SUBMITTED, supervisor,
                 "Book signed off by supervisor");

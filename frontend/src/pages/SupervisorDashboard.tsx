@@ -460,7 +460,7 @@ export const SupAvailability: React.FC = () => {
             {sessions.length ? (
               sessions.map(s => <GroupSessionCard key={s.id} session={s} viewer="supervisor" students={mine} onTakeAttendance={setAttFor} />)
             ) : (
-              !adding && <EmptyState icon="calendar" title="No group sessions yet" sub="Schedule a kick-off session to brief all your students on the FYP process." />
+              !adding && <EmptyState icon="calendar" title="No group sessions yet" sub="Schedule a kick-off session to brief all your students on the Final Year Project process." />
             )}
           </div>
         </div>

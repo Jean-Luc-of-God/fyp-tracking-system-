@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
-import type { Student, Supervisor, ProposalAttempt } from '../types';
+import type { Student, ProposalAttempt } from '../types';
 import {
   Icon,
   Badge,
@@ -570,94 +570,150 @@ export const FacStudents: React.FC<FacStudentsProps> = ({ focusStudent, onClearF
 
 /* ---------------- FacExaminers Component ---------------- */
 export const FacExaminers: React.FC = () => {
-  const { students, assignExaminer, supervisors: apiSups, supervisorById: apiSupById } = useAppContext();
+  const { students, assignExaminer, refreshStudents, supervisors: apiSups, supervisorById: apiSupById } = useAppContext();
   const supList = apiSups.length > 0 ? apiSups : SUPERVISORS;
   const supMap = apiSups.length > 0 ? apiSupById : supById;
+  const [scheduling, setScheduling] = useState<string | null>(null);
   const [assigned, setAssigned] = useState<{ [stuId: string]: string }>({});
-  const [sentTo, setSentTo] = useState<{ student: Student; examiner: Supervisor } | null>(null);
 
-  // students at book-submitted / pre-defense needing examiner
-  const needPre = students.filter(s => s.stateIndex === 8 || (s.stateIndex === 9 && !s.examinerPreId));
-  const sample = needPre.length ? needPre : students.filter(s => s.stateIndex >= 8).slice(0, 4);
+  // Step 1: book submitted, waiting to be scheduled for pre-defense
+  const bookSubmitted = students.filter(s => s.stateIndex === 8);
+  // Step 2: in pre-defense, waiting for examiner assignment
+  const needExaminer = students.filter(s => s.stateIndex === 9 && !s.examinerPreId);
 
-  function handleAssign(stu: Student, exId: string) {
-    const ex = supMap[exId];
-    assignExaminer(stu.id, exId, 'predefense');
+  async function handleSchedule(stuId: string) {
+    setScheduling(stuId);
+    try {
+      const { studentsApi } = await import('../api/students');
+      await studentsApi.transition(stuId, 'PRE_DEFENSE');
+      await refreshStudents();
+      notify('Student scheduled for pre-defense', 'success');
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Could not schedule pre-defense', 'error');
+    } finally {
+      setScheduling(null);
+    }
+  }
+
+  async function handleAssign(stu: Student, exId: string) {
+    await assignExaminer(stu.id, exId, 'predefense');
     setAssigned(a => ({ ...a, [stu.id]: exId }));
-    setSentTo({ student: stu, examiner: ex as Supervisor });
+    notify(`Examiner assigned to ${stu.name}`, 'success');
   }
 
   return (
     <div>
-      <SectionTitle sub="Assign the pre-defense examiner for each student. Forward-only, and never the student's own supervisor.">Assign Pre-Defense</SectionTitle>
+      <SectionTitle sub="Two steps: schedule pre-defense, then assign an examiner. A student's own supervisor can never be their examiner.">Assign Pre-Defense</SectionTitle>
 
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 16px", background: "var(--violet-bg)", border: "1px solid #D9CDEC", borderRadius: 10, marginBottom: 18, fontSize: 13 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 16px", background: "var(--violet-bg)", border: "1px solid #D9CDEC", borderRadius: 10, marginBottom: 22, fontSize: 13 }}>
         <Icon name="scale" size={17} style={{ color: "var(--violet)", flex: "none", marginTop: 1 }} />
-        <span style={{ color: "var(--ink-2)" }}>An examiner&apos;s assigned-students list is <strong>completely separate</strong> from the students they supervise. A person can be a supervisor for some and an examiner for others — the system never lets the two mix, and won&apos;t offer a student&apos;s own supervisor as their examiner.</span>
+        <span style={{ color: "var(--ink-2)" }}>An examiner's assigned-students list is <strong>completely separate</strong> from the students they supervise. The system will never offer a student's own supervisor as their examiner.</span>
       </div>
 
+      {/* Step 1 */}
       <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
-        <div className="card-hd"><h3>Awaiting examiner assignment</h3><Badge tone="amber">{sample.length} students</Badge></div>
-        <div style={{ overflowX: "auto" }}>
+        <div className="card-hd">
+          <div>
+            <h3>Step 1 — Schedule Pre-Defense</h3>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>These students have submitted their book. Advance them to Pre-Defense when ready.</div>
+          </div>
+          <Badge tone="amber">{bookSubmitted.length} waiting</Badge>
+        </div>
+        {bookSubmitted.length === 0 ? (
+          <div className="card-pad">
+            <div className="muted" style={{ fontSize: 13, textAlign: "center", padding: "12px 0" }}>No students at Book Submitted stage.</div>
+          </div>
+        ) : (
           <table className="tbl">
-            <thead><tr><th>Student</th><th>Stage</th><th>Supervisor (excluded)</th><th>Assign examiner</th><th></th></tr></thead>
+            <thead><tr><th>Student</th><th>Supervisor</th><th>Book submitted</th><th></th></tr></thead>
             <tbody>
-              {sample.map(s => {
+              {bookSubmitted.map(s => {
                 const sup = s.supervisorId ? supMap[s.supervisorId] : null;
-                const eligible = supList.filter(x => x.examiner && x.id !== s.supervisorId);
-                const done = assigned[s.id];
                 return (
-                  <tr key={s.id} style={{ cursor: "default" }}>
-                    <td><div style={{ display: "flex", alignItems: "center", gap: 9 }}><Avatar name={s.name} role="Student" size={26} /><div><div style={{ fontWeight: 600, color: "var(--ink)" }}>{s.name}</div><div className="mono muted" style={{ fontSize: 10.5 }}>{s.id}</div></div></div></td>
-                    <td><StateBadge stateIndex={s.stateIndex} short /></td>
-                    <td>{sup ? <span style={{ color: "var(--ink-3)" }}>{sup.name}</span> : <span className="faint">—</span>}</td>
+                  <tr key={s.id}>
                     <td>
-                      {done ? (
-                        <Badge tone="green" dot>{(supMap[done] || { name: done }).name}</Badge>
-                      ) : (
-                        <select className="select" style={{ width: 190, height: 34 }} defaultValue="" onChange={e => e.target.value && handleAssign(s, e.target.value)}>
-                          <option value="" disabled>Choose examiner…</option>
-                          {eligible.map(x => <option key={x.id} value={x.id}>{x.name} — {x.title}</option>)}
-                        </select>
-                      )}
+                      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                        <Avatar name={s.name} role="Student" size={26} />
+                        <div>
+                          <div style={{ fontWeight: 600, color: "var(--ink)" }}>{s.name}</div>
+                          <div className="mono muted" style={{ fontSize: 10.5 }}>{s.reg || s.id}</div>
+                        </div>
+                      </div>
                     </td>
-                    <td>{done && <span style={{ color: "var(--green-deep)", fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}><Icon name="check" size={14} /> Notified</span>}</td>
+                    <td className="muted">{sup ? sup.name : '—'}</td>
+                    <td className="muted">{s.enteredStageTs ? new Date(s.enteredStageTs).toLocaleDateString() : '—'}</td>
+                    <td>
+                      <button
+                        className="btn btn-navy btn-sm"
+                        disabled={scheduling === s.id}
+                        onClick={() => handleSchedule(s.id)}
+                      >
+                        {scheduling === s.id ? 'Scheduling…' : 'Schedule Pre-Defense'}
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        )}
       </div>
 
-      {/* both-roles example */}
-      <div className="card card-pad" style={{ marginBottom: 8 }}>
-        <h3 style={{ fontSize: 14, marginBottom: 4 }}>Example — one person, two non-overlapping lists</h3>
-        <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>Dr. Habimana is both a supervisor and an examiner. The lists never intersect.</p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
-            <div style={{ padding: "9px 13px", background: "var(--navy)", color: "#fff", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 7 }}><Icon name="users" size={14} /> Supervises ({students.filter(st => st.supervisorId === 'sup-hab').length})</div>
-            {students.filter(st => st.supervisorId === 'sup-hab').map(s => <div key={s.id} style={{ padding: "8px 13px", borderTop: "1px solid var(--line-soft)", fontSize: 12.5, display: "flex", justifyContent: "space-between" }}><span>{s.name}</span><span className="mono muted" style={{ fontSize: 10.5 }}>{s.id}</span></div>)}
-          </div>
-          <div style={{ border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" }}>
-            <div style={{ padding: "9px 13px", background: "var(--violet)", color: "#fff", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 7 }}><Icon name="scale" size={14} /> Examines ({students.filter(st => st.examinerPreId === 'sup-hab' || st.examinerDefId === 'sup-hab').length})</div>
-            {students.filter(st => st.examinerPreId === 'sup-hab' || st.examinerDefId === 'sup-hab').map(s => <div key={s.id} style={{ padding: "8px 13px", borderTop: "1px solid var(--line-soft)", fontSize: 12.5, display: "flex", justifyContent: "space-between" }}><span>{s.name}</span><span className="mono muted" style={{ fontSize: 10.5 }}>{s.id}</span></div>)}
-            {!students.filter(st => st.examinerPreId === 'sup-hab' || st.examinerDefId === 'sup-hab').length && <div className="muted" style={{ padding: "10px 13px", fontSize: 12 }}>—</div>}
-          </div>
-        </div>
-      </div>
-
-      <Modal open={!!sentTo} onClose={() => setSentTo(null)} width={540}>
-        {sentTo && (
+      {/* Step 2 */}
+      <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
+        <div className="card-hd">
           <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <Badge tone="green" dot>EXAMINER NOTIFIED BY EMAIL</Badge>
-              <button className="btn btn-ghost btn-sm" onClick={() => setSentTo(null)}><Icon name="x" size={14} /> Close</button>
-            </div>
-            <EmailPreview templateKey="examiner-assigned" student={sentTo.student} examiner={sentTo.examiner} status="sent" to={sentTo.examiner.email} toName={sentTo.examiner.name} ts={new Date().toISOString()} />
+            <h3>Step 2 — Assign Examiner</h3>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>These students are in Pre-Defense. Assign an examiner to complete the panel.</div>
+          </div>
+          <Badge tone="violet">{needExaminer.length} need examiner</Badge>
+        </div>
+        {needExaminer.length === 0 ? (
+          <div className="card-pad">
+            <div className="muted" style={{ fontSize: 13, textAlign: "center", padding: "12px 0" }}>No students awaiting examiner assignment.</div>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="tbl">
+              <thead><tr><th>Student</th><th>Supervisor (excluded)</th><th>Assign examiner</th><th></th></tr></thead>
+              <tbody>
+                {needExaminer.map(s => {
+                  const sup = s.supervisorId ? supMap[s.supervisorId] : null;
+                  const eligible = supList.filter(x => x.examiner && x.id !== s.supervisorId);
+                  const done = assigned[s.id];
+                  return (
+                    <tr key={s.id}>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                          <Avatar name={s.name} role="Student" size={26} />
+                          <div>
+                            <div style={{ fontWeight: 600, color: "var(--ink)" }}>{s.name}</div>
+                            <div className="mono muted" style={{ fontSize: 10.5 }}>{s.reg || s.id}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>{sup ? <span style={{ color: "var(--ink-3)" }}>{sup.name}</span> : <span className="faint">—</span>}</td>
+                      <td>
+                        {done ? (
+                          <Badge tone="green" dot>{(supMap[done] as any)?.name || done}</Badge>
+                        ) : (
+                          <select className="select" style={{ width: 210, height: 34 }} defaultValue="" onChange={e => e.target.value && handleAssign(s, e.target.value)}>
+                            <option value="" disabled>Choose examiner…</option>
+                            {eligible.map(x => <option key={x.id} value={x.id}>{x.name}{x.title ? ` — ${x.title}` : ''}</option>)}
+                          </select>
+                        )}
+                      </td>
+                      <td>
+                        {done && <span style={{ color: "var(--green-deep)", fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}><Icon name="check" size={14} /> Assigned</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
-      </Modal>
+      </div>
     </div>
   );
 };

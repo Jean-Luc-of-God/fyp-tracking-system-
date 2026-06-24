@@ -28,7 +28,7 @@ public class EmailService {
     private final UserRepository userRepository;
     private final StudentRepository studentRepository;
 
-    @Value("${spring.mail.username:noreply@aauca.ac.rw}")
+    @Value("${app.mail.from:noreply@auca.ac.rw}")
     private String fromAddress;
 
     /**

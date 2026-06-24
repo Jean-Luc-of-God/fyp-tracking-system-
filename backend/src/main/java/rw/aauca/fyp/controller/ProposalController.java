@@ -2,16 +2,21 @@ package rw.aauca.fyp.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import rw.aauca.fyp.dto.request.ProposalReviewRequest;
 import rw.aauca.fyp.dto.response.ProposalAttemptResponse;
 import rw.aauca.fyp.dto.response.StudentResponse;
+import rw.aauca.fyp.entity.Student;
 import rw.aauca.fyp.entity.User;
+import rw.aauca.fyp.enums.Role;
+import rw.aauca.fyp.repository.StudentRepository;
 import rw.aauca.fyp.service.ProposalService;
 
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.UUID;
 
 @RestController
@@ -20,11 +25,19 @@ import java.util.UUID;
 public class ProposalController {
 
     private final ProposalService proposalService;
+    private final StudentRepository studentRepository;
 
     @PostMapping("/{studentId}/submit")
     @PreAuthorize("hasAnyRole('STUDENT','HOD','FACILITATOR','SUPERADMIN')")
     public ResponseEntity<ProposalAttemptResponse> submit(@PathVariable UUID studentId,
                                                           @AuthenticationPrincipal User actor) {
+        if (actor.getRole() == Role.STUDENT) {
+            Student student = studentRepository.findById(studentId)
+                    .orElseThrow(() -> new NoSuchElementException("Student not found"));
+            if (student.getUser() == null || !student.getUser().getId().equals(actor.getId())) {
+                throw new AccessDeniedException("You may only submit proposals for yourself");
+            }
+        }
         return ResponseEntity.ok(ProposalAttemptResponse.from(
                 proposalService.submit(studentId, actor)));
     }

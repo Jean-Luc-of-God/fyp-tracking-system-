@@ -39,7 +39,7 @@ public class StudentController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN','SUPERVISOR','STUDENT')")
+    @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN','SUPERVISOR')")
     public ResponseEntity<StudentResponse> getOne(@PathVariable UUID id) {
         return ResponseEntity.ok(StudentResponse.from(studentService.getById(id)));
     }
@@ -52,10 +52,24 @@ public class StudentController {
                         .stream().map(StudentResponse::from).toList());
     }
 
+    private static final long MAX_EXCEL_BYTES = 5 * 1024 * 1024; // 5 MB
+
     @PostMapping("/import")
     @PreAuthorize("hasAnyRole('HOD','SUPERADMIN')")
     public ResponseEntity<?> importStudents(@RequestParam("file") MultipartFile file,
                                             @AuthenticationPrincipal User actor) throws IOException {
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "No file provided"));
+        }
+        if (file.getSize() > MAX_EXCEL_BYTES) {
+            return ResponseEntity.badRequest().body(Map.of("message", "File exceeds 5 MB limit"));
+        }
+        String ct = file.getContentType();
+        if (ct == null
+                || (!ct.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    && !ct.equals("application/vnd.ms-excel"))) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Only .xlsx and .xls files are accepted"));
+        }
         var imported = studentService.importFromExcel(file, actor);
         return ResponseEntity.ok(Map.of("imported", imported.size()));
     }
@@ -94,22 +108,57 @@ public class StudentController {
         return ResponseEntity.ok(StudentResponse.from(student));
     }
 
+    @PatchMapping("/me/details")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<StudentResponse> updateMyDetails(
+            @RequestBody Map<String, String> body,
+            @AuthenticationPrincipal User actor) {
+        var student = studentService.getByUserId(actor.getId());
+        var updated = studentService.updateDetails(student.getId(),
+                body.get("projectTopic"), body.get("organisation"), body.get("groupLabel"), actor);
+        return ResponseEntity.ok(StudentResponse.from(updated));
+    }
+
+    @PostMapping("/{id}/reject-case-letter")
+    @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN')")
+    public ResponseEntity<StudentResponse> rejectCaseLetter(
+            @PathVariable UUID id,
+            @RequestBody Map<String, String> body,
+            @AuthenticationPrincipal User actor) {
+        var student = studentService.getById(id);
+        String reason = body.getOrDefault("reason", "Returned for revision");
+        student.setLetterRejectionReason(reason);
+        var updated = stateService.transition(student, StudentState.REGISTERED, actor,
+                "Case letter returned: " + reason);
+        return ResponseEntity.ok(StudentResponse.from(updated));
+    }
+
     @PostMapping("/me/submit-case-letter")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<StudentResponse> submitCaseLetter(@AuthenticationPrincipal User actor) {
         var student = studentService.getByUserId(actor.getId());
+        if (student.getProjectTopic() == null || student.getProjectTopic().isBlank()) {
+            throw new RuntimeException("Please set your project topic before submitting your case study letter.");
+        }
+        if (student.getOrganisation() == null || student.getOrganisation().isBlank()) {
+            throw new RuntimeException("Please set your case study organisation before submitting.");
+        }
         return ResponseEntity.ok(StudentResponse.from(
                 stateService.transition(student, StudentState.CASE_LETTER_SUBMITTED, actor, null)));
     }
 
     @PostMapping("/{id}/transition")
-    @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN','SUPERVISOR','EXAMINER')")
+    @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN')")
     public ResponseEntity<StudentResponse> transition(
             @PathVariable UUID id,
             @RequestBody Map<String, String> body,
             @AuthenticationPrincipal User actor) {
+        String stateStr = body.get("state");
+        if (stateStr == null || stateStr.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
         var student = studentService.getById(id);
-        var toState = StudentState.valueOf(body.get("state").toUpperCase());
+        var toState = StudentState.valueOf(stateStr.toUpperCase());
         var note    = body.getOrDefault("note", null);
         return ResponseEntity.ok(StudentResponse.from(stateService.transition(student, toState, actor, note)));
     }

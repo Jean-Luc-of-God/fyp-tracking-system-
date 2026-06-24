@@ -1,4 +1,5 @@
 import React from 'react';
+import DOMPurify from 'dompurify';
 import { Icon, Avatar, Badge } from './SharedUI';
 import { fmt, fmtT, TEMPLATES } from '../utils/fypData';
 import type { Meeting } from '../types';
@@ -62,7 +63,7 @@ export const Timeline: React.FC<TimelineProps> = ({ events, highlightEmails }) =
               </div>
               {e.note && <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>{e.note}</div>}
               {e.reason && <div style={{ marginTop: 7, padding: "8px 11px", background: "var(--red-bg)", borderRadius: 7, fontSize: 12, color: "var(--red-deep)", borderLeft: "3px solid var(--red)" }}><strong>Rejection reason:</strong> {e.reason}</div>}
-              {e.reasonHtml && <div style={{ marginTop: 7, padding: "9px 12px", background: "var(--red-bg)", borderRadius: 7, fontSize: 12.5, color: "var(--red-deep)", borderLeft: "3px solid var(--red)" }}><strong>Rejection reason</strong><div className="rt-content" style={{ marginTop: 4 }} dangerouslySetInnerHTML={{ __html: e.reasonHtml }} /></div>}
+              {e.reasonHtml && <div style={{ marginTop: 7, padding: "9px 12px", background: "var(--red-bg)", borderRadius: 7, fontSize: 12.5, color: "var(--red-deep)", borderLeft: "3px solid var(--red)" }}><strong>Rejection reason</strong><div className="rt-content" style={{ marginTop: 4 }} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(e.reasonHtml, { ALLOWED_TAGS: ['b', 'i', 'ul', 'ol', 'li', 'br', 'strong', 'em'], ALLOWED_ATTR: [] }) }} /></div>}
               {e.file && <div className="chip" style={{ marginTop: 7, height: 26, cursor: "default" }}><Icon name="file" size={13} /> {e.file}</div>}
               {e.meeting && (
                 <div style={{ marginTop: 7, padding: "9px 12px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, fontSize: 12 }}>

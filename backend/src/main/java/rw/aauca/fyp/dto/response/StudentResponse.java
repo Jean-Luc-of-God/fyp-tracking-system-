@@ -30,6 +30,7 @@ public class StudentResponse {
     private boolean proposalLocked;
     private boolean flagged;
     private String note;
+    private String letterRejectionReason;
 
     public static StudentResponse from(Student s) {
         return StudentResponse.builder()
@@ -53,6 +54,7 @@ public class StudentResponse {
                 .proposalLocked(s.isProposalLocked())
                 .flagged(s.isFlagged())
                 .note(s.getNote())
+                .letterRejectionReason(s.getLetterRejectionReason())
                 .build();
     }
 }

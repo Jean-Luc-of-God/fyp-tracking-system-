@@ -60,6 +60,9 @@ public class Student {
 
     private String note;
 
+    @Column(name = "letter_rejection_reason")
+    private String letterRejectionReason;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

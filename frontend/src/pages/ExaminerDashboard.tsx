@@ -273,7 +273,7 @@ export const ExaminerDefense: React.FC = () => {
 
   return (
     <div>
-      <SectionTitle sub="Record the final defense outcome for each student. This ends their FYP journey.">
+      <SectionTitle sub="Record the final defense outcome for each student. This ends their final year journey.">
         Defense Outcomes
       </SectionTitle>
 

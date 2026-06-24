@@ -51,7 +51,12 @@ public class PanelController {
 
     @GetMapping("/student/{studentId}")
     @PreAuthorize("hasAnyRole('STUDENT','SUPERVISOR','HOD','FACILITATOR','SUPERADMIN','EXAMINER')")
-    public ResponseEntity<List<PanelAssignmentResponse>> getByStudent(@PathVariable UUID studentId) {
+    public ResponseEntity<List<PanelAssignmentResponse>> getByStudent(@PathVariable UUID studentId,
+                                                                       @AuthenticationPrincipal User actor) {
+        if (actor.getRole() == rw.aauca.fyp.enums.Role.STUDENT) {
+            // Students may only view their own panel assignments
+            panelService.assertStudentOwnership(studentId, actor);
+        }
         return ResponseEntity.ok(panelService.getByStudent(studentId)
                 .stream().map(PanelAssignmentResponse::from).toList());
     }

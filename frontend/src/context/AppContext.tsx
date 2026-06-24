@@ -391,40 +391,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 6. HOD Rejects / Returns Case Study Letter
-  const returnCaseLetter = (studentId: string, reasonHtml: string, resubmitDays: number) => {
-    const durationMs = resubmitDays * 24 * 60 * 60 * 1000;
-    
-    setState(prev => {
-      const l = prev.letters[studentId] || {};
-      const updatedLetters = {
-        ...prev.letters,
-        [studentId]: {
-          ...l,
-          status: "rejected" as const,
-          rejectedTs: Date.now(),
-          rejectionReason: reasonHtml,
-          deadlineTs: Date.now() + durationMs
-        }
-      };
-      
-      const updatedStudents = prev.students.map(s => {
-        if (s.id === studentId && s.stateIndex === 1) {
-          return { ...s, stateIndex: 0, enteredStageTs: new Date().toISOString() };
-        }
-        return s;
-      });
-
-      return {
+  const returnCaseLetter = async (studentId: string, reasonHtml: string, _resubmitDays: number) => {
+    try {
+      const plainReason = reasonHtml.replace(/<[^>]*>/g, '').trim();
+      const updated = await studentsApi.rejectCaseLetter(studentId, plainReason);
+      setState(prev => ({
         ...prev,
-        letters: updatedLetters,
-        students: updatedStudents
-      };
-    });
-
-    const student = state.students.find(s => s.id === studentId);
-    if (student) {
-      addAuditLog(`Returned case-study letter for ${student.name} with revision notes`, "Dr. Bizimungu", "HOD");
-      addNotification("case-requested", student.email, student.name, "Student", studentId, "Resubmission details updated");
+        students: prev.students.map(s => s.id === studentId ? mapStudent(updated) : s),
+      }));
+    } catch (e) {
+      console.error('returnCaseLetter failed', e);
     }
   };
 
@@ -650,7 +626,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           students: prev.students.map(s => {
             if (s.id !== studentId) return s;
             return panelType === 'predefense'
-              ? { ...s, examinerPreId: examinerId, predefenseStatus: 'Scheduled' as const, stateIndex: 9, enteredStageTs: new Date().toISOString() }
+              ? { ...s, examinerPreId: examinerId, predefenseStatus: 'Scheduled' as const }
               : { ...s, examinerDefId: examinerId };
           }),
         }));

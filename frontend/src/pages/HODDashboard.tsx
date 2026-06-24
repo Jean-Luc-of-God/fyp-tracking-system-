@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import type { Student } from '../types';
 import { 
@@ -10,16 +10,19 @@ import {
   SectionTitle, 
   Modal 
 } from '../components/SharedUI';
-import { 
-  StudentIdSearch, 
-  LetterStatusBadge, 
-  RichText, 
-  DocChip, 
-  Countdown, 
-  useNow 
+import {
+  StudentIdSearch,
+  LetterStatusBadge,
+  RichText,
+  DocChip,
+  Countdown,
+  useNow,
+  notify
 } from '../components/LetterUI';
 import { EmailPreview } from '../components/Emails';
 import { studentsApi } from '../api/students';
+import { usersApi } from '../api/users';
+import type { UserResponse } from '../api/types';
 import { 
   SupDashboard, 
   SupSupervision, 
@@ -31,11 +34,9 @@ import { FacProtoData } from './FacilitatorDashboard';
 import { 
   fmt, 
   fmtFull, 
-  bookDeadline, 
-  daysLeft, 
-  SUPERVISORS, 
-  supById, 
-  STATES 
+  bookDeadline,
+  daysLeft,
+  STATES
 } from '../utils/fypData';
 
 /* ---------------- DeadlinePill Component ---------------- */
@@ -155,7 +156,7 @@ interface HODDashboardProps {
 }
 
 export const HODDashboard: React.FC<HODDashboardProps> = ({ onNav }) => {
-  const { students, letters } = useAppContext();
+  const { students } = useAppContext();
   const [found, setFound] = useState<Student | null>(null);
 
   const counts: { [key: number]: number } = {};
@@ -164,19 +165,20 @@ export const HODDashboard: React.FC<HODDashboardProps> = ({ onNav }) => {
   });
 
   const total = students.length;
-  
-  // Count by status
-  const ls = { requested: 0, submitted: 0, approved: 0, rejected: 0 };
-  Object.values(letters).forEach(L => {
-    if (L.status && L.status !== "none") {
-      ls[L.status as 'requested' | 'submitted' | 'approved' | 'rejected']++;
-    }
-  });
 
-  const approaching = students.filter(s => s.stateIndex <= 1)
+  // Use real state-machine counts instead of local letter map
+  const ls = {
+    requested: students.filter(s => s.stateIndex >= 1).length,
+    submitted: students.filter(s => s.stateIndex === 1).length,
+    approved: students.filter(s => s.stateIndex >= 2).length,
+    rejected: 0,
+  };
+
+  // Show all early-stage students (not deadline-filtered) so the table is never empty
+  const approaching = students.filter(s => s.stateIndex <= 2)
     .map(s => ({ s, deadline: bookDeadline(s) }))
     .sort((a, b) => new Date(a.deadline).getTime() - new Date(b.deadline).getTime())
-    .slice(0, 6);
+    .slice(0, 8);
 
   return (
     <div>
@@ -209,7 +211,7 @@ export const HODDashboard: React.FC<HODDashboardProps> = ({ onNav }) => {
       <div className="resp-stack" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "start" }}>
         <div className="card" style={{ overflow: "hidden" }}>
           <div className="card-hd">
-            <h3>Approaching Final-Year-Book deadline</h3>
+            <h3>Early-stage students</h3>
             <button className="btn btn-quiet btn-sm" onClick={() => onNav("request")}>
               Request letters <Icon name="arrowRight" size={13} />
             </button>
@@ -219,37 +221,38 @@ export const HODDashboard: React.FC<HODDashboardProps> = ({ onNav }) => {
               <tr>
                 <th>Student</th>
                 <th>Case study</th>
-                <th>Deadline</th>
-                <th>Status</th>
+                <th>Stage</th>
+                <th>Letter status</th>
               </tr>
             </thead>
             <tbody>
-              {approaching.map(({ s, deadline }) => (
+              {approaching.map(({ s }) => (
                 <tr key={s.id} style={{ cursor: "default" }}>
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <Avatar name={s.name} role="Student" size={24} />
                       <div>
                         <div style={{ fontWeight: 600, color: "var(--ink)", fontSize: 12.5 }}>{s.name}</div>
-                        <div className="mono muted" style={{ fontSize: 10 }}>{s.id}</div>
+                        <div className="mono muted" style={{ fontSize: 10 }}>{s.reg}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="muted" style={{ fontSize: 12 }}>{s.org}</td>
+                  <td className="muted" style={{ fontSize: 12 }}>{s.org || '—'}</td>
                   <td>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      <span className="mono" style={{ fontSize: 11.5 }}>{fmt(deadline)}</span>
-                      <DeadlinePill deadline={deadline} />
-                    </div>
+                    {s.stateIndex === 0 && <Badge tone="grey" dot>Registered</Badge>}
+                    {s.stateIndex === 1 && <Badge tone="amber" dot>Letter Submitted</Badge>}
+                    {s.stateIndex === 2 && <Badge tone="green" dot>Letter Approved</Badge>}
                   </td>
                   <td>
-                    <LetterStatusBadge 
-                      status={letters[s.id]?.status || "none"} 
-                      expired={letters[s.id]?.deadlineTs ? Date.now() > letters[s.id]!.deadlineTs! : false} 
-                    />
+                    {s.stateIndex === 0 && <Badge tone="grey">Not submitted</Badge>}
+                    {s.stateIndex === 1 && <Badge tone="blue" dot>Awaiting review</Badge>}
+                    {s.stateIndex >= 2 && <Badge tone="green" dot>Approved</Badge>}
                   </td>
                 </tr>
               ))}
+              {!approaching.length && (
+                <tr><td colSpan={4} className="muted" style={{ textAlign: "center", padding: 22 }}>All students have progressed past the early stages.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -783,18 +786,18 @@ export const ReviewLetterModal: React.FC<ReviewLetterModalProps> = ({ q, onClose
 
 /* ---------------- HODReview ---------------- */
 export const HODReview: React.FC = () => {
-  const { students, letters } = useAppContext();
+  const { students } = useAppContext();
   const [review, setReview] = useState<{ id: string; student: Student; file: string } | null>(null);
   const [result, setResult] = useState<{ type: 'approved' | 'rejected'; student: Student } | null>(null);
   const [found, setFound] = useState<Student | null>(null);
 
-  // submitted list
+  // Students at CASE_LETTER_SUBMITTED state (stateIndex === 1) — driven by real API state
   const queue = students
-    .filter(s => letters[s.id]?.status === "submitted")
+    .filter(s => s.stateIndex === 1)
     .map(s => ({
       id: s.id,
       student: s,
-      file: letters[s.id]?.file || "case-letter.pdf"
+      file: "case-letter.pdf"
     }));
 
   const list = found ? queue.filter(q => q.id === found.id) : queue;
@@ -868,12 +871,23 @@ export const HODReview: React.FC = () => {
 
 /* ---------------- HODSupervisors ---------------- */
 export const HODSupervisors: React.FC = () => {
-  const { students, assignSupervisor, supervisors: apiSups, supervisorById: apiSupById } = useAppContext();
-  const supList = apiSups.length > 0 ? apiSups : SUPERVISORS;
-  const supMap = apiSups.length > 0 ? apiSupById : supById;
-  const sample = students.filter(s => s.stateIndex >= 6).slice(0, 4);
+  const { students, assignSupervisor } = useAppContext();
+  const [supList, setSupList] = useState<UserResponse[]>([]);
+  const [supMap, setSupMap]   = useState<Record<string, UserResponse>>({});
+  const [loadingSups, setLoadingSups] = useState(true);
   const [assigned, setAssigned] = useState<{ [stuId: string]: string }>({});
-  const [emailFor, setEmailFor] = useState<{ s: Student; sup: any } | null>(null);
+
+  useEffect(() => {
+    usersApi.byRole('SUPERVISOR')
+      .then(sups => {
+        setSupList(sups);
+        setSupMap(Object.fromEntries(sups.map(s => [s.id, s])));
+      })
+      .finally(() => setLoadingSups(false));
+  }, []);
+
+  // All students who don't yet have a supervisor assigned
+  const sample = students.filter(s => !s.supervisorId && s.stateIndex < 12);
   
   return (
     <div>
@@ -882,18 +896,20 @@ export const HODSupervisors: React.FC = () => {
       </SectionTitle>
       
       <div className="card" style={{ overflow: "hidden", maxWidth: 880 }}>
-        <div className="card-hd"><h3>Awaiting supervisor</h3><Badge tone="amber">{sample.length}</Badge></div>
+        <div className="card-hd"><h3>Students without a supervisor</h3><Badge tone="amber">{sample.length}</Badge></div>
         <table className="tbl">
           <thead>
             <tr>
               <th>Student</th>
               <th>Topic</th>
               <th>Assign supervisor</th>
-              <th></th>
             </tr>
           </thead>
           <tbody>
-            {sample.map(s => {
+            {loadingSups && (
+              <tr><td colSpan={3} className="muted" style={{ textAlign: 'center', padding: 20 }}>Loading supervisors…</td></tr>
+            )}
+            {!loadingSups && sample.map(s => {
               const done = assigned[s.id] || s.supervisorId;
               return (
                 <tr key={s.id} style={{ cursor: "default" }}>
@@ -902,68 +918,228 @@ export const HODSupervisors: React.FC = () => {
                       <Avatar name={s.name} role="Student" size={26} />
                       <div>
                         <div style={{ fontWeight: 600, color: "var(--ink)" }}>{s.name}</div>
-                        <div className="mono muted" style={{ fontSize: 10.5 }}>{s.id}</div>
+                        <div className="mono muted" style={{ fontSize: 10.5 }}>{s.reg}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="muted" style={{ fontSize: 12.5 }}>{s.topic}</td>
+                  <td className="muted" style={{ fontSize: 12.5 }}>{s.topic || '—'}</td>
                   <td>
                     {done ? (
-                      <Badge tone="green" dot>{supMap[done]?.name || done}</Badge>
+                      <Badge tone="green" dot>{supMap[done]?.fullName || done}</Badge>
                     ) : (
                       <select
                         className="select"
-                        style={{ width: 200, height: 34 }}
+                        style={{ width: 220, height: 34 }}
                         defaultValue=""
                         onChange={e => {
                           if (e.target.value) {
                             assignSupervisor(s.id, e.target.value);
                             setAssigned(a => ({ ...a, [s.id]: e.target.value }));
-                            setEmailFor({ s, sup: supMap[e.target.value] });
                           }
                         }}
                       >
                         <option value="" disabled>Choose supervisor…</option>
-                        {supList.map(x => (
-                          <option key={x.id} value={x.id}>{x.name} — {x.title}</option>
+                        {supList.map((x: any) => (
+                          <option key={x.id} value={x.id}>{x.fullName}</option>
                         ))}
                       </select>
-                    )}
-                  </td>
-                  <td>
-                    {done && (
-                      <span style={{ color: "var(--green-deep)", fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}>
-                        <Icon name="mail" size={14} /> Emailed
-                      </span>
                     )}
                   </td>
                 </tr>
               );
             })}
+            {!loadingSups && !sample.length && (
+              <tr><td colSpan={3} className="muted" style={{ textAlign: 'center', padding: 22 }}>All students have been assigned a supervisor.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
       
-      <Modal open={!!emailFor} onClose={() => setEmailFor(null)} width={540}>
-        {emailFor && (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-              <Badge tone="amber" dot>KEY EVENT · SUPERVISOR ASSIGNED</Badge>
-              <button className="btn btn-ghost btn-sm" onClick={() => setEmailFor(null)}>
-                <Icon name="x" size={14} /> Close
-              </button>
-            </div>
-            <EmailPreview 
-              templateKey="sup-assigned" 
-              student={emailFor.s} 
-              supervisor={emailFor.sup} 
-              status="sent" 
-              toName={emailFor.s.name} 
-              ts={new Date().toISOString()} 
-            />
-          </div>
-        )}
-      </Modal>
+    </div>
+  );
+};
+
+/* ---------------- ProtoReview ---------------- */
+export const ProtoReview: React.FC = () => {
+  const { students, refreshStudents } = useAppContext();
+  const [loading, setLoading] = useState<string | null>(null);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+
+  const awaiting    = students.filter(s => s.stateIndex === 2); // CASE_LETTER_APPROVED
+  const underReview = students.filter(s => s.stateIndex === 3); // PROTOTYPE_REVIEW
+  const granted     = students.filter(s => s.stateIndex === 4); // PROTOTYPE_GRANTED
+
+  async function callForReview(studentId: string) {
+    setLoading(studentId);
+    try {
+      await studentsApi.transition(studentId, 'PROTOTYPE_REVIEW');
+      notify('Student called for prototype review', 'success');
+      await refreshStudents();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed', 'error');
+    } finally { setLoading(null); }
+  }
+
+  async function recordOutcome(studentId: string, outcome: 'PROTOTYPE_REVIEW' | 'PROTOTYPE_GRANTED') {
+    setLoading(studentId);
+    try {
+      await studentsApi.transition(studentId, outcome, note.trim() || undefined);
+      notify(outcome === 'PROTOTYPE_GRANTED' ? 'Prototype granted ✓' : 'Marked as needs refinement', 'success');
+      setNoteFor(null); setNote('');
+      await refreshStudents();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed', 'error');
+    } finally { setLoading(null); }
+  }
+
+  return (
+    <div>
+      <SectionTitle sub="Manage prototype review sessions. Call students in, record outcomes, and grant access to proposal submission.">
+        Prototype Review
+      </SectionTitle>
+
+      {/* ── Awaiting call ── */}
+      <div className="card" style={{ overflow: 'hidden', marginBottom: 18 }}>
+        <div className="card-hd">
+          <h3>Awaiting prototype review call</h3>
+          <Badge tone="blue">{awaiting.length}</Badge>
+        </div>
+        <table className="tbl">
+          <thead><tr><th>Student</th><th>Organisation</th><th>Topic</th><th>Action</th></tr></thead>
+          <tbody>
+            {awaiting.map(s => (
+              <tr key={s.id}>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <Avatar name={s.name} role="Student" size={26} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                      <div className="mono muted" style={{ fontSize: 10.5 }}>{s.reg}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className="muted" style={{ fontSize: 12.5 }}>{s.org || '—'}</td>
+                <td className="muted" style={{ fontSize: 12.5 }}>{s.topic || '—'}</td>
+                <td>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={loading === s.id}
+                    onClick={() => callForReview(s.id)}
+                  >
+                    {loading === s.id ? 'Calling…' : 'Call for Review'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!awaiting.length && (
+              <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 20 }}>No students waiting for a prototype review call.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Under review ── */}
+      <div className="card" style={{ overflow: 'hidden', marginBottom: 18 }}>
+        <div className="card-hd">
+          <h3>Currently under prototype review</h3>
+          <Badge tone="amber">{underReview.length}</Badge>
+        </div>
+        <table className="tbl">
+          <thead><tr><th>Student</th><th>Organisation</th><th>Attempts</th><th>Outcome</th></tr></thead>
+          <tbody>
+            {underReview.map(s => (
+              <React.Fragment key={s.id}>
+                <tr>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                      <Avatar name={s.name} role="Student" size={26} />
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                        <div className="mono muted" style={{ fontSize: 10.5 }}>{s.reg}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="muted" style={{ fontSize: 12.5 }}>{s.org || '—'}</td>
+                  <td>
+                    <Badge tone={s.protoPres >= 2 ? 'red' : 'amber'}>{s.protoPres} attempt{s.protoPres !== 1 ? 's' : ''}</Badge>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn btn-sm"
+                        style={{ background: 'var(--green)', color: '#fff' }}
+                        disabled={loading === s.id}
+                        onClick={() => { setNoteFor(s.id); setNote(''); }}
+                      >
+                        Grant ✓
+                      </button>
+                      <button
+                        className="btn btn-quiet btn-sm"
+                        disabled={loading === s.id}
+                        onClick={() => recordOutcome(s.id, 'PROTOTYPE_REVIEW')}
+                      >
+                        Needs refinement ↺
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                {noteFor === s.id && (
+                  <tr>
+                    <td colSpan={4} style={{ background: 'var(--green-bg)', padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+                        <div style={{ flex: 1 }}>
+                          <label className="field-label">Note for student (optional)</label>
+                          <input className="input" placeholder="e.g. Strong prototype, approved to proceed" value={note} onChange={e => setNote(e.target.value)} />
+                        </div>
+                        <button className="btn btn-primary btn-sm" disabled={loading === s.id} onClick={() => recordOutcome(s.id, 'PROTOTYPE_GRANTED')}>
+                          {loading === s.id ? 'Saving…' : 'Confirm Grant'}
+                        </button>
+                        <button className="btn btn-quiet btn-sm" onClick={() => setNoteFor(null)}>Cancel</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            ))}
+            {!underReview.length && (
+              <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 20 }}>No students currently in prototype review.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Granted ── */}
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card-hd">
+          <h3>Prototype granted — awaiting proposal</h3>
+          <Badge tone="green">{granted.length}</Badge>
+        </div>
+        <table className="tbl">
+          <thead><tr><th>Student</th><th>Organisation</th><th>Topic</th><th>Status</th></tr></thead>
+          <tbody>
+            {granted.map(s => (
+              <tr key={s.id}>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <Avatar name={s.name} role="Student" size={26} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                      <div className="mono muted" style={{ fontSize: 10.5 }}>{s.reg}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className="muted" style={{ fontSize: 12.5 }}>{s.org || '—'}</td>
+                <td className="muted" style={{ fontSize: 12.5 }}>{s.topic || '—'}</td>
+                <td><Badge tone="green" dot>Can submit proposal</Badge></td>
+              </tr>
+            ))}
+            {!granted.length && (
+              <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 20 }}>No students have been granted prototype approval yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };

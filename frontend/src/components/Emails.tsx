@@ -47,7 +47,7 @@ export function emailBody(key: string, ctx: EmailBodyCtx): { subject: string; bo
       body: (
         <>
           <p style={para}>Dear {s.name || "Student"},</p>
-          <p style={para}>You have been registered for the Final Year Project programme, <strong>Class of 2026</strong>, in the Department of Software Engineering. Your records are now active in the FYP Tracking system.</p>
+          <p style={para}>You have been registered for the Final Year Project programme, <strong>Class of 2026</strong>, in the Department of Software Engineering. Your records are now active in the Final Year Project Tracking system.</p>
           <p style={para}>Your next step is to submit your <strong>case-study letter</strong> identifying your partner organisation.</p>
         </>
       )
@@ -104,7 +104,7 @@ export function emailBody(key: string, ctx: EmailBodyCtx): { subject: string; bo
       )
     },
     "sup-assigned": {
-      subject: "Your FYP supervisor has been assigned",
+      subject: "Your supervisor has been assigned",
       hero: true,
       body: (
         <>
@@ -130,7 +130,7 @@ export function emailBody(key: string, ctx: EmailBodyCtx): { subject: string; bo
       body: (
         <>
           <p style={para}>Dear {sup ? sup.name : "Supervisor"},</p>
-          <p style={para}>The following student has been assigned to you for FYP supervision. Please post your weekly availability and confirm a first meeting.</p>
+          <p style={para}>The following student has been assigned to you for Final Year Project supervision. Please post your weekly availability and confirm a first meeting.</p>
           <div style={{ padding: "11px 13px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, fontSize: 13 }}>
             <strong>{s.name}</strong> · <span className="mono">{s.id}</span><br /><span className="muted">{s.topic} — {s.org}</span>
           </div>
@@ -228,7 +228,7 @@ export const EmailPreview: React.FC<EmailPreviewProps> = ({
       {/* meta */}
       <div style={{ padding: "13px 18px", borderBottom: "1px solid var(--line-soft)", fontSize: 12.5 }}>
         <div style={{ display: "grid", gridTemplateColumns: "52px 1fr", rowGap: 4, color: "var(--ink-3)" }}>
-          <span>From</span><span style={{ color: "var(--ink-2)" }}>FYP Tracking System <span className="mono" style={{ color: "var(--ink-4)" }}>&lt;noreply@aauca.ac.rw&gt;</span></span>
+          <span>From</span><span style={{ color: "var(--ink-2)" }}>Final Year Project Tracking System <span className="mono" style={{ color: "var(--ink-4)" }}>&lt;noreply@auca.ac.rw&gt;</span></span>
           <span>To</span><span style={{ color: "var(--ink-2)" }}>{toName || (student && student.name) || (examiner && examiner.name)} <span className="mono" style={{ color: "var(--ink-4)" }}>&lt;{to || (student && student.email) || (examiner && examiner.email)}&gt;</span></span>
           <span>Subject</span><span style={{ color: "var(--ink)", fontWeight: 600 }}>{content.subject}</span>
         </div>
@@ -244,7 +244,7 @@ export const EmailPreview: React.FC<EmailPreviewProps> = ({
         <div style={{ padding: "20px 22px" }}>
           {content.body}
           <div style={{ marginTop: 8, paddingTop: 14, borderTop: "1px solid var(--line-soft)", fontSize: 11, color: "var(--ink-4)", lineHeight: 1.6 }}>
-            This is an automated message from the FYP Tracking &amp; Accountability System. Department of Software Engineering, AUCA Rwanda.<br />
+            This is an automated message from the Final Year Project Tracking &amp; Accountability System. Department of Software Engineering, AUCA Rwanda.<br />
             {ts && <span className="mono">Sent {fmtFull(ts)}</span>}
           </div>
         </div>

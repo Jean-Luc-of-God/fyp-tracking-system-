@@ -7,6 +7,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import rw.aauca.fyp.dto.request.CreateUserRequest;
+import rw.aauca.fyp.dto.response.UserResponse;
 import rw.aauca.fyp.entity.User;
 import rw.aauca.fyp.enums.Role;
 import rw.aauca.fyp.service.UserService;
@@ -24,26 +25,27 @@ public class UserController {
     @GetMapping
     @PreAuthorize("hasRole('SUPERADMIN')")
     public ResponseEntity<?> getAll() {
-        return ResponseEntity.ok(userService.getAll());
+        return ResponseEntity.ok(userService.getAll().stream().map(UserResponse::from).toList());
     }
 
     @GetMapping("/role/{role}")
     @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN')")
     public ResponseEntity<?> getByRole(@PathVariable String role) {
-        return ResponseEntity.ok(userService.getByRole(Role.valueOf(role.toUpperCase())));
+        return ResponseEntity.ok(userService.getByRole(Role.valueOf(role.toUpperCase()))
+                .stream().map(UserResponse::from).toList());
     }
 
     @GetMapping("/examiners")
     @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN')")
     public ResponseEntity<?> getExaminers() {
-        return ResponseEntity.ok(userService.getEligibleExaminers());
+        return ResponseEntity.ok(userService.getEligibleExaminers().stream().map(UserResponse::from).toList());
     }
 
     @PostMapping
     @PreAuthorize("hasRole('SUPERADMIN')")
     public ResponseEntity<?> create(@Valid @RequestBody CreateUserRequest req,
                                     @AuthenticationPrincipal User actor) {
-        return ResponseEntity.ok(userService.create(req, actor));
+        return ResponseEntity.ok(UserResponse.from(userService.create(req, actor)));
     }
 
     @PatchMapping("/{id}/enabled")
@@ -51,7 +53,7 @@ public class UserController {
     public ResponseEntity<?> setEnabled(@PathVariable UUID id,
                                         @RequestBody Map<String, Boolean> body,
                                         @AuthenticationPrincipal User actor) {
-        return ResponseEntity.ok(userService.setEnabled(id, body.get("enabled"), actor));
+        return ResponseEntity.ok(UserResponse.from(userService.setEnabled(id, body.get("enabled"), actor)));
     }
 
     @PostMapping("/{id}/reset-password")
@@ -59,7 +61,11 @@ public class UserController {
     public ResponseEntity<?> resetPassword(@PathVariable UUID id,
                                            @RequestBody Map<String, String> body,
                                            @AuthenticationPrincipal User actor) {
-        userService.resetPassword(id, body.get("password"), actor);
+        String newPassword = body.get("password");
+        if (newPassword == null || newPassword.length() < 10) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Password must be at least 10 characters"));
+        }
+        userService.resetPassword(id, newPassword, actor);
         return ResponseEntity.ok(Map.of("message", "Password reset successfully"));
     }
 
@@ -68,8 +74,8 @@ public class UserController {
                                                @AuthenticationPrincipal User currentUser) {
         String current  = body.get("currentPassword");
         String newPass  = body.get("newPassword");
-        if (current == null || newPass == null || newPass.length() < 8) {
-            return ResponseEntity.badRequest().body(Map.of("message", "currentPassword and newPassword (min 8 chars) are required"));
+        if (current == null || newPass == null || newPass.length() < 10) {
+            return ResponseEntity.badRequest().body(Map.of("message", "currentPassword and newPassword (min 10 chars) are required"));
         }
         userService.changePassword(currentUser.getId(), current, newPass);
         return ResponseEntity.ok(Map.of("message", "Password changed successfully"));

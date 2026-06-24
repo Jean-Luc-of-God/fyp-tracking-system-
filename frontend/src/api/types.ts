@@ -29,6 +29,7 @@ export interface StudentResponse {
   proposalLocked: boolean;
   flagged: boolean;
   note: string | null;
+  letterRejectionReason: string | null;
 }
 
 export type StudentState =

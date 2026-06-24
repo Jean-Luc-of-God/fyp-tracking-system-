@@ -265,6 +265,7 @@ export function buildMockStudents(): Student[] {
       enteredStageTs: opts.enteredStageTs || stageEntryTs(stateIndex, seedVal),
       bookRegisteredTs: opts.bookRegisteredTs || bookRegTs(seedVal, stateIndex),
       note: opts.note || null,
+      letterRejectionReason: opts.letterRejectionReason || null,
     };
     idx++;
     return s;
@@ -444,7 +445,7 @@ export const TEMPLATES: { [key: string]: { event: string; subject: string; hero?
   "proto-granted":     { event: "Prototype granted",             subject: "Prototype granted — proceed to proposal" },
   "prop-rejected":     { event: "Proposal rejected (with reason)",subject: "Proposal returned for revision" },
   "prop-accepted":     { event: "Proposal accepted",             subject: "Your proposal has been accepted" },
-  "sup-assigned":      { event: "Supervisor assigned",           subject: "Your FYP supervisor has been assigned", hero: true },
+  "sup-assigned":      { event: "Supervisor assigned",           subject: "Your supervisor has been assigned", hero: true },
   "sup-notified":      { event: "Supervisor notified of students",subject: "New students assigned to you for supervision" },
   "examiner-assigned": { event: "Assigned to conduct a pre-defense", subject: "You have been assigned as a pre-defense examiner", hero: true },
   "reached-predefense":{ event: "Reached pre-defense",           subject: "Book signed off — pre-defense stage" },

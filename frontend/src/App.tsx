@@ -27,14 +27,15 @@ import {
   FacPending, 
   FacProtoData 
 } from './pages/FacilitatorDashboard';
-import { 
-  HODDashboard, 
-  HODUpload, 
-  HODRequest, 
-  HODReview, 
-  HODSupervisors, 
-  HODRecords, 
-  HODSupervisorWindow 
+import {
+  HODDashboard,
+  HODUpload,
+  HODRequest,
+  HODReview,
+  HODSupervisors,
+  HODRecords,
+  HODSupervisorWindow,
+  ProtoReview
 } from './pages/HODDashboard';
 import { 
   AdminDashboard, 
@@ -219,6 +220,7 @@ function MainApp() {
         case "pending": return <FacPending onOpen={(id: string) => open("students", id)} />;
         case "supervisors": return <HODSupervisors />;
         case "examiners": return <FacExaminers />;
+        case "proto-review": return <ProtoReview />;
         case "availability": return <StaffAvailabilityDirectory title="Supervisor Availability" sub="Weekly office hours and contact points for staff." />;
         case "proto": return <FacProtoData />;
       }
@@ -231,6 +233,9 @@ function MainApp() {
         case "upload": return <HODUpload />;
         case "request": return <HODRequest />;
         case "review": return <HODReview />;
+        case "supervisors": return <HODSupervisors />;
+        case "examiners": return <FacExaminers />;
+        case "proto-review": return <ProtoReview />;
         case "mysupervision": return <HODSupervisorWindow />;
         case "availability": return <StaffAvailabilityDirectory title="Supervisor Availability" sub="Weekly office hours and contact points for staff." />;
         case "records": return <HODRecords />;

@@ -29,7 +29,7 @@ const STATE_META: Record<string, { label: string; next: string; color: string; d
   BOOK_SUBMITTED:        { label: 'Book Submitted',           next: 'Your book is submitted. Await pre-defense scheduling.',          color: 'violet', done: false },
   PRE_DEFENSE:           { label: 'Pre-Defense',              next: 'Prepare for your pre-defense presentation.',                     color: 'violet', done: false },
   DEFENSE:               { label: 'Final Defense',            next: 'Prepare for your final defense.',                                color: 'violet', done: false },
-  COMPLETED:             { label: 'Completed',                next: 'Congratulations! Your FYP is complete.',                         color: 'green',  done: true  },
+  COMPLETED:             { label: 'Completed',                next: 'Congratulations! Your Final Year Project is complete.',                         color: 'green',  done: true  },
   WITHDRAWN:             { label: 'Withdrawn',                next: 'Your registration has been withdrawn. Contact your HOD.',        color: 'red',    done: true  },
 };
 
@@ -248,6 +248,34 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
 export const StudentCase: React.FC = () => {
   const { student: stu, loaded, reload } = useMyStudent();
   const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [topic, setTopic] = useState('');
+  const [org, setOrg] = useState('');
+  const [group, setGroup] = useState('');
+  const [detailsSaved, setDetailsSaved] = useState(false);
+
+  React.useEffect(() => {
+    if (stu) {
+      setTopic(stu.topic || '');
+      setOrg(stu.org || '');
+      setGroup(stu.group || '');
+    }
+  }, [stu?.id]);
+
+  async function handleSaveDetails(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await studentsApi.updateMyDetails({ projectTopic: topic, organisation: org, groupLabel: group });
+      setDetailsSaved(true);
+      reload();
+      notify('Details saved', 'success');
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to save details', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function handleSubmitLetter() {
     setSubmitting(true);
@@ -266,10 +294,11 @@ export const StudentCase: React.FC = () => {
   if (!stu) return NO_PROFILE;
 
   const stateIndex = stu.stateIndex;
+  const canSubmit = (topic.trim() || stu.topic) && (org.trim() || stu.org);
 
   return (
     <div>
-      <SectionTitle sub="Your case study letter tracks the first stage of your FYP registration.">Case-Study Letter</SectionTitle>
+      <SectionTitle sub="Your case study letter tracks the first stage of your final year project registration.">Case-Study Letter</SectionTitle>
 
       <div className="card card-pad" style={{ maxWidth: 640 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
@@ -278,36 +307,97 @@ export const StudentCase: React.FC = () => {
           </span>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)' }}>
-              {stateIndex === 0 && 'Ready to submit your case study letter'}
+              {stateIndex === 0 && 'Fill in your project details and submit'}
               {stateIndex === 1 && 'Letter submitted — under HOD review'}
               {stateIndex >= 2 && 'Case letter approved ✓'}
             </div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
-              {stateIndex === 0 && 'Obtain an acceptance letter from your case study organisation and submit it below.'}
-              {stateIndex === 1 && 'Your letter has been received by the HOD and is being reviewed. You will be notified of the decision.'}
+              {stateIndex === 0 && 'Enter your project topic and organisation, then submit your case study letter to the HOD.'}
+              {stateIndex === 1 && 'Your letter has been received by the HOD and is being reviewed.'}
               {stateIndex >= 2 && 'Your case study letter was approved. You have advanced to the prototyping stage.'}
             </div>
           </div>
         </div>
 
         {stateIndex === 0 && (
+          <form onSubmit={handleSaveDetails} style={{ display: 'grid', gap: 12, marginBottom: 18 }}>
+            <div>
+              <label className="field-label">Project topic <span style={{ color: 'var(--red)' }}>*</span></label>
+              <input
+                className="input"
+                required
+                placeholder="e.g. Smart Attendance Management System"
+                value={topic}
+                onChange={e => { setTopic(e.target.value); setDetailsSaved(false); }}
+              />
+            </div>
+            <div>
+              <label className="field-label">Case study organisation <span style={{ color: 'var(--red)' }}>*</span></label>
+              <input
+                className="input"
+                required
+                placeholder="e.g. Bank of Kigali"
+                value={org}
+                onChange={e => { setOrg(e.target.value); setDetailsSaved(false); }}
+              />
+            </div>
+            <div>
+              <label className="field-label">Group / cohort label <span className="muted">(optional)</span></label>
+              <input
+                className="input"
+                placeholder="e.g. A"
+                value={group}
+                onChange={e => { setGroup(e.target.value); setDetailsSaved(false); }}
+              />
+            </div>
+            <button type="submit" className="btn btn-quiet btn-sm" disabled={saving} style={{ justifySelf: 'start' }}>
+              {saving ? 'Saving…' : detailsSaved ? '✓ Details saved' : 'Save details'}
+            </button>
+          </form>
+        )}
+
+        {stateIndex >= 1 && (
+          <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+            {[
+              ['Project topic', stu.topic || '—'],
+              ['Organisation', stu.org || '—'],
+              ['Group', stu.group || '—'],
+            ].map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 13 }}>
+                <span className="muted">{k}</span>
+                <span style={{ fontWeight: 500 }}>{v}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {stateIndex === 0 && stu.letterRejectionReason && (
+          <div style={{ padding: '12px 14px', background: 'var(--red-bg, #FFF0F0)', border: '1px solid #FFCCCC', borderRadius: 8, marginBottom: 14 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--red, #C0392B)', marginBottom: 4 }}>Letter returned for revision</div>
+            <div style={{ fontSize: 12.5, color: 'var(--ink-2)' }}>{stu.letterRejectionReason}</div>
+            <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 6 }}>Update your details below and resubmit.</div>
+          </div>
+        )}
+
+        {stateIndex === 0 && (
           <div style={{ marginBottom: 16 }}>
-            <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.6, margin: '0 0 12px' }}>
-              Once your case study organisation has agreed to host your FYP and signed your acceptance letter, click below to notify the HOD that your letter is ready.
-            </p>
+            {!canSubmit && (
+              <p style={{ fontSize: 12.5, color: 'var(--amber-deep)', marginBottom: 10 }}>
+                Save your project topic and organisation above before submitting.
+              </p>
+            )}
             <button
               className="btn btn-primary"
               onClick={handleSubmitLetter}
-              disabled={submitting}
+              disabled={submitting || !canSubmit}
             >
               <Icon name="send" size={15} />
-              {submitting ? 'Submitting…' : 'Submit Case Study Letter'}
+              {submitting ? 'Submitting…' : stu.letterRejectionReason ? 'Resubmit Case Study Letter' : 'Submit Case Study Letter'}
             </button>
           </div>
         )}
 
         <div style={{ padding: '11px 14px', background: 'var(--surface)', borderRadius: 9, fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.6 }}>
-          <Icon name="info" size={14} style={{ verticalAlign: -2, marginRight: 6 }} />
           {stateIndex === 0
             ? 'The HOD reviews all submitted letters and will notify you of the outcome within a few working days.'
             : 'Letter submission and review is managed by your HOD. You will be notified when action is required.'}
@@ -342,7 +432,7 @@ export const StudentSupervisor: React.FC = () => {
           <Avatar name={stu.supervisorName} role="Supervisor" size={52} />
           <div>
             <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--ink)' }}>{stu.supervisorName}</div>
-            <div className="muted" style={{ fontSize: 12.5 }}>Your FYP Supervisor</div>
+            <div className="muted" style={{ fontSize: 12.5 }}>Your Supervisor</div>
           </div>
         </div>
 
@@ -402,7 +492,7 @@ export const StudentTimeline: React.FC = () => {
 
   return (
     <div>
-      <SectionTitle sub="Every milestone in your FYP journey — where you've been and where you're going.">My Timeline</SectionTitle>
+      <SectionTitle sub="Every milestone in your final year journey — where you've been and where you're going.">My Timeline</SectionTitle>
 
       <div className="card" style={{ marginBottom: 18 }}>
         <div className="card-pad" style={{ paddingTop: 10 }}>

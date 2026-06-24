@@ -14,6 +14,9 @@ import rw.aauca.fyp.repository.AvailabilitySlotRepository;
 import rw.aauca.fyp.repository.MeetingRepository;
 import rw.aauca.fyp.repository.StudentRepository;
 
+import org.springframework.security.access.AccessDeniedException;
+import rw.aauca.fyp.enums.Role;
+
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -110,7 +113,14 @@ public class SupervisionService {
         return meetingRepo.save(meeting);
     }
 
-    public List<Meeting> getMeetingsForStudent(UUID studentId) {
+    public List<Meeting> getMeetingsForStudent(UUID studentId, User actor) {
+        if (actor.getRole() == Role.SUPERVISOR) {
+            Student student = studentRepo.findById(studentId)
+                    .orElseThrow(() -> new IllegalArgumentException("Student not found"));
+            if (student.getSupervisor() == null || !student.getSupervisor().getId().equals(actor.getId())) {
+                throw new AccessDeniedException("You are not the assigned supervisor for this student");
+            }
+        }
         return meetingRepo.findByStudentIdOrderByScheduledAtDesc(studentId);
     }
 

@@ -28,7 +28,7 @@ public class StudentStateService {
     // Allowed transitions: from -> set of valid next states
     private static final Map<StudentState, Set<StudentState>> ALLOWED = Map.ofEntries(
         Map.entry(StudentState.REGISTERED,               EnumSet.of(StudentState.CASE_LETTER_SUBMITTED)),
-        Map.entry(StudentState.CASE_LETTER_SUBMITTED,    EnumSet.of(StudentState.CASE_LETTER_APPROVED)),
+        Map.entry(StudentState.CASE_LETTER_SUBMITTED,    EnumSet.of(StudentState.CASE_LETTER_APPROVED, StudentState.REGISTERED)),
         Map.entry(StudentState.CASE_LETTER_APPROVED,     EnumSet.of(StudentState.PROTOTYPE_REVIEW)),
         Map.entry(StudentState.PROTOTYPE_REVIEW,         EnumSet.of(StudentState.PROTOTYPE_REVIEW, StudentState.PROTOTYPE_GRANTED)),
         Map.entry(StudentState.PROTOTYPE_GRANTED,        EnumSet.of(StudentState.PROPOSAL_UNDER_REVIEW)),

@@ -82,7 +82,8 @@ public class SupervisionController {
 
     @GetMapping("/meetings/student/{studentId}")
     @PreAuthorize("hasAnyRole('SUPERVISOR','HOD','FACILITATOR','SUPERADMIN')")
-    public ResponseEntity<?> meetingsForStudent(@PathVariable UUID studentId) {
-        return ResponseEntity.ok(supervisionService.getMeetingsForStudent(studentId));
+    public ResponseEntity<?> meetingsForStudent(@PathVariable UUID studentId,
+                                                @AuthenticationPrincipal User actor) {
+        return ResponseEntity.ok(supervisionService.getMeetingsForStudent(studentId, actor));
     }
 }

@@ -10,8 +10,11 @@ import org.springframework.web.bind.annotation.*;
 import rw.aauca.fyp.dto.response.AuditLogResponse;
 import rw.aauca.fyp.repository.AuditLogRepository;
 
+import org.springframework.data.domain.PageRequest;
+
 import java.util.List;
 import java.util.UUID;
+
 
 @RestController
 @RequestMapping("/api/audit")
@@ -27,18 +30,21 @@ public class AuditController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
 
+        int cappedSize = Math.min(size, 200);
         Page<AuditLogResponse> result = auditLogRepository
-                .findAllByOrderByCreatedAtDesc(PageRequest.of(page, size))
+                .findAllByOrderByCreatedAtDesc(PageRequest.of(page, cappedSize))
                 .map(AuditLogResponse::from);
         return ResponseEntity.ok(result);
     }
+
+    private static final int MAX_UNBOUNDED = 500;
 
     /** All actions performed by a specific actor */
     @GetMapping("/actor/{actorId}")
     @PreAuthorize("hasAnyRole('SUPERADMIN','HOD')")
     public ResponseEntity<List<AuditLogResponse>> getByActor(@PathVariable UUID actorId) {
         List<AuditLogResponse> result = auditLogRepository
-                .findByActorIdOrderByCreatedAtDesc(actorId)
+                .findByActorIdOrderByCreatedAtDesc(actorId, PageRequest.of(0, MAX_UNBOUNDED))
                 .stream().map(AuditLogResponse::from).toList();
         return ResponseEntity.ok(result);
     }
@@ -51,7 +57,8 @@ public class AuditController {
             @PathVariable UUID entityId) {
 
         List<AuditLogResponse> result = auditLogRepository
-                .findByEntityTypeAndEntityIdOrderByCreatedAtDesc(entityType, entityId)
+                .findByEntityTypeAndEntityIdOrderByCreatedAtDesc(entityType, entityId,
+                        PageRequest.of(0, MAX_UNBOUNDED))
                 .stream().map(AuditLogResponse::from).toList();
         return ResponseEntity.ok(result);
     }
@@ -61,7 +68,7 @@ public class AuditController {
     @PreAuthorize("hasAnyRole('SUPERADMIN','HOD','FACILITATOR')")
     public ResponseEntity<List<AuditLogResponse>> getByAction(@PathVariable String action) {
         List<AuditLogResponse> result = auditLogRepository
-                .findByActionOrderByCreatedAtDesc(action)
+                .findByActionOrderByCreatedAtDesc(action, PageRequest.of(0, MAX_UNBOUNDED))
                 .stream().map(AuditLogResponse::from).toList();
         return ResponseEntity.ok(result);
     }

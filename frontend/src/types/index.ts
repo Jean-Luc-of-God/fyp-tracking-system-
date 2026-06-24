@@ -122,6 +122,7 @@ export interface Student {
   enteredStageTs: string;
   bookRegisteredTs: string;
   note: string | null;
+  letterRejectionReason: string | null;
 }
 
 export interface NotificationLog {

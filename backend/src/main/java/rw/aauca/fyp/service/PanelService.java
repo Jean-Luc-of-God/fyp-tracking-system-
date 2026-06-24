@@ -142,6 +142,16 @@ public class PanelService {
         return panelRepository.findByStudentIdOrderByAssignedAtAsc(studentId);
     }
 
+    /** Throws AccessDeniedException if the authenticated student does not own this student record. */
+    public void assertStudentOwnership(UUID studentId, User actor) {
+        Student student = studentRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+        if (student.getUser() == null || !student.getUser().getId().equals(actor.getId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You may only view your own records");
+        }
+    }
+
     public List<PanelAssignment> getMyAssignments(UUID examinerId) {
         return panelRepository.findByExaminerIdOrderByAssignedAtAsc(examinerId);
     }
