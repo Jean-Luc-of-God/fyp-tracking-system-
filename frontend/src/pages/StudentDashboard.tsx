@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { studentsApi } from '../api/students';
 import { proposalsApi } from '../api/proposals';
 import { mapStudent, mapProposalAttempt } from '../utils/mappers';
 import { getToken } from '../api/client';
+import { notify } from '../components/LetterUI';
 import {
   Icon,
   Badge,
@@ -11,10 +12,7 @@ import {
   EmptyState,
   SectionTitle,
 } from '../components/SharedUI';
-import { notify } from '../components/LetterUI';
 import type { Student, ProposalAttempt } from '../types';
-import { usersApi } from '../api/users';
-import { ChangePasswordCard } from './SupervisorDashboard';
 
 interface NavProps { onNav: (view: string) => void; }
 
@@ -39,6 +37,7 @@ const STATE_META: Record<string, { label: string; next: string; color: string; d
 function useMyStudent() {
   const [student, setStudent] = useState<Student | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!getToken()) { setLoaded(true); return; }
@@ -47,9 +46,9 @@ function useMyStudent() {
       .then(r => setStudent(mapStudent(r)))
       .catch(() => setStudent(null))
       .finally(() => setLoaded(true));
-  }, []);
+  }, [reloadKey]);
 
-  return { student, loaded };
+  return { student, loaded, reload: () => setReloadKey(k => k + 1) };
 }
 
 const NO_PROFILE = (
@@ -62,18 +61,40 @@ const NO_PROFILE = (
 
 /* ─── StudentDashboard ─── */
 export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
-  const { student: stu, loaded } = useMyStudent();
+  const { student: stu, loaded, reload } = useMyStudent();
   const [proposals, setProposals] = useState<ProposalAttempt[]>([]);
+  const [submittingProposal, setSubmittingProposal] = useState(false);
+
+  const loadProposals = useCallback(async (stuId: string) => {
+    try {
+      const r = await proposalsApi.history(stuId);
+      setProposals(r.map(mapProposalAttempt));
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     if (!stu) return;
-    proposalsApi.history(stu.id).then(r => setProposals(r.map(mapProposalAttempt))).catch(() => {});
-  }, [stu?.id]);
+    loadProposals(stu.id);
+  }, [stu?.id, loadProposals]);
+
+  async function handleSubmitProposal() {
+    if (!stu) return;
+    setSubmittingProposal(true);
+    try {
+      await proposalsApi.submit(stu.id);
+      notify('Proposal submitted — awaiting review', 'success');
+      reload();
+      await loadProposals(stu.id);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Submission failed', 'error');
+    } finally {
+      setSubmittingProposal(false);
+    }
+  }
 
   if (!loaded) return <EmptyState title="Loading your profile…" sub="" />;
   if (!stu) return NO_PROFILE;
 
-  const meta = STATE_META[stu.stateIndex >= 12 ? 'WITHDRAWN' : Object.keys(STATE_META)[stu.stateIndex]] ?? STATE_META['REGISTERED'];
   const stateName = Object.keys(STATE_META)[stu.stateIndex] ?? 'REGISTERED';
   const currentMeta = STATE_META[stateName] ?? STATE_META['REGISTERED'];
 
@@ -100,6 +121,48 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
         <div className="eyebrow" style={{ marginBottom: 6 }}>What happens next</div>
         <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.6 }}>{currentMeta.next}</p>
       </div>
+
+      {/* Proposal submission — only at PROTOTYPE_GRANTED or PROPOSAL_UNDER_REVIEW */}
+      {(stu.stateIndex === 4 || stu.stateIndex === 5) && (
+        <div className="card card-pad" style={{ marginBottom: 18 }}>
+          <div className="eyebrow" style={{ marginBottom: 10, color: 'var(--navy)' }}>Research Proposal</div>
+          {stu.proposalLocked ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--red-bg)', border: '1px solid #F5C6C6', borderRadius: 9 }}>
+              <Icon name="alert" size={18} style={{ color: 'var(--red)', flex: 'none' }} />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--red-deep)' }}>Proposal submissions locked</div>
+                <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>You have reached the maximum 3 rejections. Contact your HOD to unlock further submissions.</div>
+              </div>
+            </div>
+          ) : stu.stateIndex === 5 && proposals.length > 0 && proposals[proposals.length - 1].status === 'pending' ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'var(--blue-bg)', border: '1px solid #C7DCF1', borderRadius: 9 }}>
+              <Icon name="clock" size={18} style={{ color: 'var(--blue)', flex: 'none' }} />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--blue)' }}>Proposal under review</div>
+                <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>Attempt {proposals.length} has been submitted and is awaiting a decision from your HOD or Facilitator.</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.6 }}>
+                {stu.stateIndex === 4
+                  ? 'Your prototype has been approved. Submit your research proposal to proceed.'
+                  : `Attempt ${proposals.length} was rejected. You may resubmit a revised proposal (${3 - proposals.length} attempt${3 - proposals.length !== 1 ? 's' : ''} remaining).`
+                }
+              </div>
+              <button
+                className="btn btn-primary"
+                onClick={handleSubmitProposal}
+                disabled={submittingProposal}
+                style={{ flex: 'none' }}
+              >
+                <Icon name="send" size={15} />
+                {submittingProposal ? 'Submitting…' : stu.stateIndex === 4 ? 'Submit Proposal' : 'Resubmit Proposal'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
         {/* Student details */}
@@ -183,7 +246,21 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
 
 /* ─── StudentCase ─── */
 export const StudentCase: React.FC = () => {
-  const { student: stu, loaded } = useMyStudent();
+  const { student: stu, loaded, reload } = useMyStudent();
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmitLetter() {
+    setSubmitting(true);
+    try {
+      await studentsApi.submitCaseLetter();
+      notify('Case study letter submitted — awaiting HOD review', 'success');
+      reload();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Submission failed', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   if (!loaded) return <EmptyState title="Loading…" sub="" />;
   if (!stu) return NO_PROFILE;
@@ -196,26 +273,44 @@ export const StudentCase: React.FC = () => {
 
       <div className="card card-pad" style={{ maxWidth: 640 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
-          <span style={{ width: 48, height: 48, borderRadius: 12, background: stateIndex >= 2 ? 'var(--green-bg)' : 'var(--blue-bg)', color: stateIndex >= 2 ? 'var(--green)' : 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
-            <Icon name={stateIndex >= 2 ? 'checkCircle' : 'file'} size={24} />
+          <span style={{ width: 48, height: 48, borderRadius: 12, background: stateIndex >= 2 ? 'var(--green-bg)' : stateIndex === 1 ? 'var(--amber-bg)' : 'var(--blue-bg)', color: stateIndex >= 2 ? 'var(--green)' : stateIndex === 1 ? 'var(--amber-deep)' : 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+            <Icon name={stateIndex >= 2 ? 'checkCircle' : stateIndex === 1 ? 'clock' : 'file'} size={24} />
           </span>
           <div>
             <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)' }}>
-              {stateIndex === 0 && 'Awaiting letter request from HOD'}
-              {stateIndex === 1 && 'Letter submitted — under review'}
+              {stateIndex === 0 && 'Ready to submit your case study letter'}
+              {stateIndex === 1 && 'Letter submitted — under HOD review'}
               {stateIndex >= 2 && 'Case letter approved ✓'}
             </div>
             <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
-              {stateIndex === 0 && 'The HOD will open a submission window for you. Check back soon.'}
-              {stateIndex === 1 && 'Your letter has been received by the HOD and is being reviewed.'}
-              {stateIndex >= 2 && 'Your case study letter was approved. You have advanced to the next stage.'}
+              {stateIndex === 0 && 'Obtain an acceptance letter from your case study organisation and submit it below.'}
+              {stateIndex === 1 && 'Your letter has been received by the HOD and is being reviewed. You will be notified of the decision.'}
+              {stateIndex >= 2 && 'Your case study letter was approved. You have advanced to the prototyping stage.'}
             </div>
           </div>
         </div>
 
+        {stateIndex === 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <p style={{ fontSize: 13, color: 'var(--ink-2)', lineHeight: 1.6, margin: '0 0 12px' }}>
+              Once your case study organisation has agreed to host your FYP and signed your acceptance letter, click below to notify the HOD that your letter is ready.
+            </p>
+            <button
+              className="btn btn-primary"
+              onClick={handleSubmitLetter}
+              disabled={submitting}
+            >
+              <Icon name="send" size={15} />
+              {submitting ? 'Submitting…' : 'Submit Case Study Letter'}
+            </button>
+          </div>
+        )}
+
         <div style={{ padding: '11px 14px', background: 'var(--surface)', borderRadius: 9, fontSize: 12.5, color: 'var(--ink-3)', lineHeight: 1.6 }}>
           <Icon name="info" size={14} style={{ verticalAlign: -2, marginRight: 6 }} />
-          Letter submission and review is managed by your HOD. You will be notified when action is required.
+          {stateIndex === 0
+            ? 'The HOD reviews all submitted letters and will notify you of the outcome within a few working days.'
+            : 'Letter submission and review is managed by your HOD. You will be notified when action is required.'}
         </div>
       </div>
     </div>
@@ -297,7 +392,7 @@ export const StudentTimeline: React.FC = () => {
 
   useEffect(() => {
     if (!stu) return;
-    proposalsApi.history(stu.id).then(r => setProposals(r.map(mapProposalAttempt))).catch(() => {});
+    proposalsApi.history(stu.id).then(r => setProposals(r.map(mapProposalAttempt))).catch(() => {/* ignore */});
   }, [stu?.id]);
 
   if (!loaded) return <EmptyState title="Loading…" sub="" />;
@@ -336,9 +431,9 @@ export const StudentTimeline: React.FC = () => {
                   <div style={{ fontSize: 13.5, fontWeight: current ? 700 : done ? 500 : 400, color: future ? 'var(--ink-4)' : 'var(--ink)' }}>
                     {label}
                     {current && <Badge tone="amber" style={{ marginLeft: 8 }}>Current</Badge>}
-                    {i === reached && stu.stateEnteredAt && (
+                    {i === reached && stu.enteredStageTs && (
                       <span className="muted" style={{ fontSize: 11.5, marginLeft: 8, fontWeight: 400 }}>
-                        since {new Date(stu.stateEnteredAt).toLocaleDateString()}
+                        since {new Date(stu.enteredStageTs).toLocaleDateString()}
                       </span>
                     )}
                   </div>

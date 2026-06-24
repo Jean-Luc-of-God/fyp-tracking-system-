@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { 
   SectionTitle, 
@@ -9,16 +9,16 @@ import {
   Modal 
 } from '../components/SharedUI';
 import { EmailPreview } from '../components/Emails';
-import { 
-  fmt, 
-  fmtFull, 
-  SUPERVISORS, 
-  supById, 
-  FACILITATOR, 
-  HOD, 
-  SUPERADMIN, 
-  TEMPLATES 
+import {
+  fmt,
+  fmtFull,
+  SUPERVISORS,
+  supById,
+  TEMPLATES
 } from '../utils/fypData';
+import { usersApi } from '../api/users';
+import { notify } from '../components/LetterUI';
+import type { UserResponse } from '../api/types';
 
 /* ---------------- AdminDashboard ---------------- */
 interface AdminDashboardProps {
@@ -84,86 +84,180 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNav }) => {
 };
 
 /* ---------------- AdminAccounts ---------------- */
+const ROLES = ['STUDENT', 'SUPERVISOR', 'FACILITATOR', 'HOD', 'EXAMINER', 'SUPERADMIN'];
+
+function roleTone(role: string) {
+  switch (role) {
+    case 'SUPERADMIN': return 'red';
+    case 'HOD': return 'green';
+    case 'FACILITATOR': return 'amber';
+    case 'EXAMINER': return 'violet';
+    case 'SUPERVISOR': return 'navy';
+    default: return 'blue';
+  }
+}
+
+const BLANK_FORM = { fullName: '', email: '', password: '', phone: '', role: 'SUPERVISOR', eligibleExaminer: false };
+
 export const AdminAccounts: React.FC = () => {
-  const { students } = useAppContext();
-  
-  const base = [
-    ...SUPERVISORS.map(s => ({ name: s.full, email: s.email, role: s.examiner ? "Supervisor · Examiner" : "Supervisor", enabled: true })),
-    { name: FACILITATOR.full, email: FACILITATOR.email, role: "Facilitator", enabled: true },
-    { name: HOD.full, email: HOD.email, role: "HOD", enabled: true },
-    { name: SUPERADMIN.full, email: SUPERADMIN.email, role: "Superadmin", enabled: true },
-    ...students.slice(0, 5).map(s => ({ name: s.name, email: s.email, role: "Student", enabled: true })),
-  ];
+  const [users, setUsers] = useState<UserResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [resetFor, setResetFor] = useState<UserResponse | null>(null);
+  const [resetPwd, setResetPwd] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [form, setForm] = useState(BLANK_FORM);
+  const [saving, setSaving] = useState(false);
 
-  const [users, setUsers] = useState(base);
-  const [resetFor, setResetFor] = useState<any | null>(null);
-  const [resetDone, setResetDone] = useState<any | null>(null);
+  function load() {
+    setLoading(true);
+    usersApi.list().then(setUsers).catch(() => notify('Failed to load users', 'error')).finally(() => setLoading(false));
+  }
 
-  function doReset() {
-    setResetDone(resetFor);
-    setResetFor(null);
+  useEffect(() => { load(); }, []);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await usersApi.create({
+        fullName: form.fullName,
+        email: form.email,
+        password: form.password,
+        phone: form.phone || undefined,
+        role: form.role,
+        eligibleExaminer: form.eligibleExaminer,
+      });
+      notify('Account created', 'success');
+      setShowCreate(false);
+      setForm(BLANK_FORM);
+      load();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to create account', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleToggle(u: UserResponse) {
+    try {
+      await usersApi.setEnabled(u.id, !u.enabled);
+      setUsers(us => us.map(x => x.id === u.id ? { ...x, enabled: !u.enabled } : x));
+    } catch {
+      notify('Failed to update account', 'error');
+    }
+  }
+
+  async function handleReset() {
+    if (!resetFor || !resetPwd) return;
+    setSaving(true);
+    try {
+      await usersApi.resetPassword(resetFor.id, resetPwd);
+      notify(`Password reset for ${resetFor.fullName}`, 'success');
+      setResetFor(null);
+      setResetPwd('');
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to reset password', 'error');
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div>
-      <SectionTitle 
-        sub="Create, enable/disable accounts, assign roles, and reset passwords." 
-        right={<button className="btn btn-primary"><Icon name="plus" size={15} /> Create account</button>}
+      <SectionTitle
+        sub="Create, enable/disable accounts, assign roles, and reset passwords."
+        right={<button className="btn btn-primary" onClick={() => setShowCreate(true)}><Icon name="plus" size={15} /> Create account</button>}
       >
         Accounts &amp; Roles
       </SectionTitle>
-      
-      {resetDone && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 16px", background: "var(--green-bg)", borderRadius: 10, marginBottom: 14, fontSize: 13, color: "var(--green-deep)" }}>
-          <Icon name="checkCircle" size={16} /> 
-          Password reset for <strong>{resetDone.name}</strong> — a temporary password was emailed and the action was written to the audit log. 
-          <button className="btn btn-quiet btn-sm" onClick={() => setResetDone(null)} style={{ marginLeft: "auto" }}>Dismiss</button>
+
+      {loading ? (
+        <div className="muted" style={{ padding: 24 }}>Loading users…</div>
+      ) : (
+        <div className="card" style={{ overflow: "hidden" }}>
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.id}>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      <Avatar name={u.fullName} role={u.role} size={26} />
+                      <span style={{ fontWeight: 600, color: "var(--ink)" }}>{u.fullName}</span>
+                    </div>
+                  </td>
+                  <td className="mono muted" style={{ fontSize: 11.5 }}>{u.email}</td>
+                  <td><Badge tone={roleTone(u.role)}>{u.role}</Badge></td>
+                  <td>{u.enabled ? <Badge tone="green" dot>Active</Badge> : <Badge tone="grey" dot>Disabled</Badge>}</td>
+                  <td>
+                    <div style={{ display: "flex", gap: 7 }}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => { setResetFor(u); setResetPwd(''); }}>
+                        <Icon name="key" size={13} /> Reset
+                      </button>
+                      <button className="btn btn-quiet btn-sm" onClick={() => handleToggle(u)}>
+                        {u.enabled ? "Disable" : "Enable"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      <div className="card" style={{ overflow: "hidden" }}>
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>User</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u, i) => (
-              <tr key={i} style={{ cursor: "default" }}>
-                <td>
-                  <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                    <Avatar name={u.name} role={u.role.split(" ")[0]} size={26} />
-                    <span style={{ fontWeight: 600, color: "var(--ink)" }}>{u.name}</span>
-                  </div>
-                </td>
-                <td className="mono muted" style={{ fontSize: 11.5 }}>{u.email}</td>
-                <td>
-                  <Badge tone={u.role.includes("Superadmin") ? "red" : u.role.includes("HOD") ? "green" : u.role.includes("Facilitator") ? "amber" : u.role.includes("Examiner") ? "violet" : u.role.includes("Supervisor") ? "navy" : "blue"}>
-                    {u.role}
-                  </Badge>
-                </td>
-                <td>{u.enabled ? <Badge tone="green" dot>Active</Badge> : <Badge tone="grey" dot>Disabled</Badge>}</td>
-                <td>
-                  <div style={{ display: "flex", gap: 7 }}>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setResetFor(u)}>
-                      <Icon name="key" size={13} /> Reset
-                    </button>
-                    <button className="btn btn-quiet btn-sm" onClick={() => setUsers(us => us.map((x, j) => j === i ? { ...x, enabled: !x.enabled } : x))}>
-                      {u.enabled ? "Disable" : "Enable"}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Create account modal */}
+      <Modal open={showCreate} onClose={() => setShowCreate(false)} width={460}>
+        <div className="card" style={{ boxShadow: "var(--sh-pop)" }}>
+          <div className="card-pad">
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Create account</div>
+            <form onSubmit={handleCreate} style={{ display: 'grid', gap: 12 }}>
+              <div>
+                <label className="field-label">Full name</label>
+                <input className="input" required value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))} />
+              </div>
+              <div>
+                <label className="field-label">Email</label>
+                <input className="input" type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+              </div>
+              <div>
+                <label className="field-label">Password</label>
+                <input className="input" type="password" required minLength={8} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+              </div>
+              <div>
+                <label className="field-label">Phone (optional)</label>
+                <input className="input" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+              </div>
+              <div>
+                <label className="field-label">Role</label>
+                <select className="input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              {(form.role === 'SUPERVISOR' || form.role === 'HOD') && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                  <input type="checkbox" checked={form.eligibleExaminer} onChange={e => setForm(f => ({ ...f, eligibleExaminer: e.target.checked }))} />
+                  Eligible examiner
+                </label>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 9, marginTop: 4 }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Creating…' : 'Create account'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Modal>
 
+      {/* Reset password modal */}
       <Modal open={!!resetFor} onClose={() => setResetFor(null)} width={420}>
         {resetFor && (
           <div className="card" style={{ overflow: "hidden", boxShadow: "var(--sh-pop)" }}>
@@ -174,17 +268,17 @@ export const AdminAccounts: React.FC = () => {
                 </span>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>Reset password</div>
-                  <div className="muted" style={{ fontSize: 12.5 }}>{resetFor.name}</div>
+                  <div className="muted" style={{ fontSize: 12.5 }}>{resetFor.fullName}</div>
                 </div>
               </div>
-              <p style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.6 }}>
-                A temporary password will be generated and emailed to <span className="mono">{resetFor.email}</span>. The user must change it on next sign-in. This is recorded in the audit log.
-              </p>
+              <label className="field-label">New password</label>
+              <input className="input" type="password" minLength={8} value={resetPwd}
+                onChange={e => setResetPwd(e.target.value)} placeholder="Min. 8 characters" />
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, padding: "14px 18px", background: "var(--surface)", borderTop: "1px solid var(--line)" }}>
               <button className="btn btn-ghost" onClick={() => setResetFor(null)}>Cancel</button>
-              <button className="btn btn-danger" onClick={doReset}>
-                <Icon name="key" size={14} /> Reset &amp; email
+              <button className="btn btn-danger" disabled={saving || resetPwd.length < 8} onClick={handleReset}>
+                <Icon name="key" size={14} /> {saving ? 'Saving…' : 'Reset password'}
               </button>
             </div>
           </div>
@@ -444,10 +538,10 @@ export const AdminConfig: React.FC = () => {
             </div>
             <div className="card-pad">
               <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", border: "1px solid var(--line)", borderRadius: 9 }}>
-                <Avatar name={FACILITATOR.name} role="Facilitator" size={28} />
+                <Avatar name="FYP Facilitator" role="Facilitator" size={28} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>{FACILITATOR.full}</div>
-                  <div className="muted" style={{ fontSize: 11 }}>{FACILITATOR.title}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)" }}>FYP Facilitator</div>
+                  <div className="muted" style={{ fontSize: 11 }}>Coordinator, FYP</div>
                 </div>
                 <Badge tone="green" dot>Active</Badge>
               </div>

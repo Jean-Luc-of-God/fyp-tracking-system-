@@ -34,7 +34,7 @@ interface StudentRecordProps {
 }
 
 export const StudentRecord: React.FC<StudentRecordProps> = ({ studentId, onBack, readOnly: _readOnly }) => {
-  const { students, notificationLogs, letters, refreshStudents } = useAppContext();
+  const { students, notificationLogs, letters, refreshStudents, activeUserRole } = useAppContext();
   const stu = students.find(s => s.id === studentId);
   const [emailOpen, setEmailOpen] = useState<any>(null);
 
@@ -44,6 +44,23 @@ export const StudentRecord: React.FC<StudentRecordProps> = ({ studentId, onBack,
   const [rejectReason, setRejectReason] = useState('');
   const [proposalSubmitting, setProposalSubmitting] = useState(false);
   const [proposalError, setProposalError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+
+  async function handleUnlockProposal() {
+    if (!stu) return;
+    setUnlocking(true);
+    try {
+      await proposalsApi.unlock(stu.id);
+      notify(`Proposal unlocked for ${stu.name}`, 'success');
+      await refreshStudents();
+      const updated = await proposalsApi.history(studentId);
+      setApiAttempts(updated.map(mapProposalAttempt));
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Unlock failed', 'error');
+    } finally {
+      setUnlocking(false);
+    }
+  }
 
   useEffect(() => {
     if (!getToken() || !studentId) return;
@@ -217,6 +234,23 @@ export const StudentRecord: React.FC<StudentRecordProps> = ({ studentId, onBack,
                           <span className="mono muted" style={{ fontSize: 10.5, flex: "none" }}>{fmt(a.ts)}</span>
                         </div>
                       ))}
+
+                      {/* Proposal locked — HOD/SUPERADMIN can unlock */}
+                      {stu.proposalLocked && getToken() && (activeUserRole === 'hod' || activeUserRole === 'superadmin') && (
+                        <div style={{ marginTop: 12, padding: '12px 14px', background: 'var(--red-bg)', border: '1px solid #F5C6C6', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                          <div>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--red-deep)' }}>Proposal locked — 3 rejections reached</div>
+                            <div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Student cannot resubmit without an HOD unlock.</div>
+                          </div>
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={handleUnlockProposal}
+                            disabled={unlocking}
+                          >
+                            <Icon name="refresh" size={13} /> {unlocking ? 'Unlocking…' : 'Unlock Proposal'}
+                          </button>
+                        </div>
+                      )}
 
                       {/* Proposal review panel — shown only when student is PROPOSAL_UNDER_REVIEW */}
                       {stu.stateIndex === 5 && getToken() && (

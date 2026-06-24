@@ -115,6 +115,7 @@ export interface Student {
   attempts: ProposalAttempt[];
   nextMeeting: { ts: string; confirmed: boolean } | null;
   bookSignedOff: boolean;
+  proposalLocked: boolean;
   flagged: boolean;
   defense: StudentDefense | null;
   predefenseStatus: 'Scheduled' | 'Cleared to defend' | null;

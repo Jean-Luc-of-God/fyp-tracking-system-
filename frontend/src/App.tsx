@@ -86,6 +86,7 @@ function MainApp() {
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState<'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin'>("facilitator");
   const [activeUserId, setActiveUserId] = useState<string>('');
+  const [activeUserFullName, setActiveUserFullName] = useState<string>('');
   const [page, setPage] = useState("pipeline");
   const [focusStudentId, setFocusStudentId] = useState<string | null>(null);
   const [showFlow, setShowFlow] = useState(false);
@@ -121,6 +122,7 @@ function MainApp() {
     if (!authUser) return null;
     const r = authUser.role;
     setActiveUserId(authUser.userId);
+    setActiveUserFullName(authUser.fullName);
     switchUser(r, authUser.userId);
     setRole(r);
     setPage(firstPage(r));
@@ -129,13 +131,6 @@ function MainApp() {
     // Reload students from API with fresh token
     refreshStudents();
     return r;
-  }
-
-  function switchRole(r: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') {
-    switchUser(r, activeUserId);
-    setRole(r);
-    setPage(firstPage(r));
-    setFocusStudentId(null);
   }
 
   function nav(p: string) {
@@ -258,15 +253,15 @@ function MainApp() {
   return (
     <>
       <ConnectionBanner />
-      <AppShell 
-        role={role} 
-        page={page} 
-        onNav={nav} 
-        onSwitch={switchRole} 
+      <AppShell
+        role={role}
+        page={page}
+        onNav={nav}
         onGoto={goto}
-        breadcrumb={isNotifs ? "Notifications" : (navItem ? navItem.label : "")} 
+        breadcrumb={isNotifs ? "Notifications" : (navItem ? navItem.label : "")}
         onResolveDemo={() => setShowFlow(true)}
         onLogout={async () => { await apiLogout(); setAuthed(false); }}
+        userFullName={activeUserFullName}
       >
         <ErrorBoundary key={role + page}>
           {loading ? (

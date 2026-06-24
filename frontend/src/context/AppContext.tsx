@@ -336,7 +336,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 5. HOD Approves Case Study Letter
-  const approveCaseLetter = (studentId: string) => {
+  const approveCaseLetter = async (studentId: string) => {
+    if (getToken()) {
+      try {
+        const updated = await studentsApi.transition(studentId, 'CASE_LETTER_APPROVED');
+        setState(prev => ({
+          ...prev,
+          letters: {
+            ...prev.letters,
+            [studentId]: {
+              ...(prev.letters[studentId] || {}),
+              status: 'approved' as const,
+              approvedTs: Date.now(),
+              requirements: { name: "fyp-requirements-class-2026.docx", size: "46 KB", pages: 3 },
+              rejectionReason: undefined,
+            }
+          },
+          students: prev.students.map(s =>
+            s.id === studentId ? { ...s, stateIndex: 2, enteredStageTs: updated.stateEnteredAt } : s
+          ),
+        }));
+        return;
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Failed to approve case letter');
+        return;
+      }
+    }
+    // Local fallback (unauthenticated)
     setState(prev => {
       const l = prev.letters[studentId] || {};
       const updatedLetters = {
@@ -349,21 +375,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           rejectionReason: undefined
         }
       };
-
       const updatedStudents = prev.students.map(s => {
         if (s.id === studentId && s.stateIndex === 1) {
           return { ...s, stateIndex: 2, enteredStageTs: new Date().toISOString() };
         }
         return s;
       });
-
-      return {
-        ...prev,
-        letters: updatedLetters,
-        students: updatedStudents
-      };
+      return { ...prev, letters: updatedLetters, students: updatedStudents };
     });
-
     const student = state.students.find(s => s.id === studentId);
     if (student) {
       addAuditLog(`Approved case-study letter for ${student.name}`, "Dr. Bizimungu", "HOD");

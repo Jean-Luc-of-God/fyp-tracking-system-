@@ -50,6 +50,7 @@ export function mapStudent(s: StudentResponse): Student {
     attempts: [],           // loaded lazily via proposals API
     nextMeeting: null,      // loaded lazily via meetings API
     bookSignedOff: s.bookSignedOff,
+    proposalLocked: s.proposalLocked,
     flagged: s.flagged,
     defense: null,          // derived from panel outcomes
     predefenseStatus: stateIndex >= 9 ? 'Scheduled' : null,

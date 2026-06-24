@@ -237,6 +237,7 @@ export function buildMockStudents(): Student[] {
     
     const s: Student = {
       id: opts.id || ("STU-2026-" + String(100 + idx).slice(1)),
+      userId: opts.userId || ("usr-" + String(100 + idx).slice(1)),
       reg: "26" + String(1000 + (seedVal * 7) % 8999),
       name,
       initials: initials(name),
@@ -247,6 +248,9 @@ export function buildMockStudents(): Student[] {
       topic: opts.topic || TOPICS[seedVal % TOPICS.length],
       stateIndex,
       supervisorId: supId,
+      supervisorName: opts.supervisorName ?? (supId ? (SUPERVISORS.find(s => s.id === supId)?.name ?? null) : null),
+      supervisorEmail: opts.supervisorEmail ?? (supId ? (SUPERVISORS.find(s => s.id === supId)?.email ?? null) : null),
+      supervisorPhone: opts.supervisorPhone ?? (supId ? (SUPERVISORS.find(s => s.id === supId)?.phone ?? null) : null),
       examinerPreId: opts.examinerPreId || (stateIndex >= 9 ? eligibleExaminerFor(supId, seedVal) : null),
       examinerDefId: opts.examinerDefId || (stateIndex >= 10 ? eligibleExaminerFor(supId, seedVal + 1) : null),
       protoPres,
@@ -254,6 +258,7 @@ export function buildMockStudents(): Student[] {
       nextMeeting: opts.nextMeeting !== undefined ? opts.nextMeeting
                    : (stateIndex === 7 ? { ts: dt(6, 12 + (seedVal % 6), 14, 0), confirmed: (seedVal % 3 !== 0) } : null),
       bookSignedOff: stateIndex >= 8,
+      proposalLocked: !!opts.proposalLocked,
       flagged: !!opts.flagged,
       defense: opts.defense || (stateIndex >= 10 ? { outcome: "Passed with minor corrections", panel: "Panel 2", ts: dt(6, 7, 11, 0) } : null),
       predefenseStatus: opts.predefenseStatus || (stateIndex >= 9 ? (stateIndex > 9 ? "Cleared to defend" : "Scheduled") : null),

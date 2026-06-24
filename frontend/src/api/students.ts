@@ -14,7 +14,10 @@ export const studentsApi = {
     api.post<StudentResponse>(`/api/students/${studentId}/assign-supervisor`, { supervisorId }),
 
   transition: (studentId: string, toState: string, note?: string) =>
-    api.post<StudentResponse>(`/api/students/${studentId}/transition`, { toState, note }),
+    api.post<StudentResponse>(`/api/students/${studentId}/transition`, { state: toState, note }),
+
+  submitCaseLetter: () =>
+    api.post<StudentResponse>('/api/students/me/submit-case-letter'),
 
   signOffBook: (studentId: string) =>
     api.patch<StudentResponse>(`/api/students/${studentId}/sign-off-book`),

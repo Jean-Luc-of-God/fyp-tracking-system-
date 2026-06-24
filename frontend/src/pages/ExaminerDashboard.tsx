@@ -367,6 +367,7 @@ export const SupExamining: React.FC<SupExaminingProps> = () => {
   const tabs = [
     { id: "assigned", label: "Assigned to me", icon: "scale" },
     { id: "pre", label: "Pre-Defense", icon: "checkCircle" },
+    { id: "defense", label: "Defense", icon: "layers" },
   ];
 
   return (
@@ -374,9 +375,9 @@ export const SupExamining: React.FC<SupExaminingProps> = () => {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
         <span className="eyebrow" style={{ marginRight: 4 }}>Examining</span>
         {tabs.map(t => (
-          <button 
-            key={t.id} 
-            className={"chip" + (tab === t.id ? " active" : "")} 
+          <button
+            key={t.id}
+            className={"chip" + (tab === t.id ? " active" : "")}
             onClick={() => setTab(t.id)}
           >
             <Icon name={t.icon} size={13} /> {t.label}
@@ -385,6 +386,7 @@ export const SupExamining: React.FC<SupExaminingProps> = () => {
       </div>
       {tab === "assigned" && <ExaminerDashboard />}
       {tab === "pre" && <ExaminerPredefense />}
+      {tab === "defense" && <ExaminerDefense />}
     </div>
   );
 };
