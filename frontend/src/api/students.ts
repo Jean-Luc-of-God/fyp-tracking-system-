@@ -19,6 +19,11 @@ export const studentsApi = {
   submitCaseLetter: () =>
     api.post<StudentResponse>('/api/students/me/submit-case-letter'),
 
+  createStudent: (data: {
+    fullName: string; email: string; regNumber: string;
+    phone?: string; org?: string; groupLabel?: string; password?: string;
+  }) => api.post<StudentResponse>('/api/students/create', data),
+
   signOffBook: (studentId: string) =>
     api.patch<StudentResponse>(`/api/students/${studentId}/sign-off-book`),
 

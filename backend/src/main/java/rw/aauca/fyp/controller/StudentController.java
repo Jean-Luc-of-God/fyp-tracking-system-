@@ -77,6 +77,23 @@ public class StudentController {
         return ResponseEntity.ok(StudentResponse.from(studentService.signOffBook(id, actor)));
     }
 
+    @PostMapping("/create")
+    @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN')")
+    public ResponseEntity<StudentResponse> createStudent(
+            @RequestBody Map<String, String> body,
+            @AuthenticationPrincipal User actor) {
+        var student = studentService.createStudent(
+                body.get("fullName"),
+                body.get("email"),
+                body.get("regNumber"),
+                body.getOrDefault("phone", null),
+                body.getOrDefault("org", null),
+                body.getOrDefault("groupLabel", null),
+                body.getOrDefault("password", null),
+                actor);
+        return ResponseEntity.ok(StudentResponse.from(student));
+    }
+
     @PostMapping("/me/submit-case-letter")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<StudentResponse> submitCaseLetter(@AuthenticationPrincipal User actor) {

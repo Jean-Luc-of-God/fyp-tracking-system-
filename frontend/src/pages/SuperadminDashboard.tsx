@@ -17,6 +17,7 @@ import {
   TEMPLATES
 } from '../utils/fypData';
 import { usersApi } from '../api/users';
+import { studentsApi } from '../api/students';
 import { notify } from '../components/LetterUI';
 import type { UserResponse } from '../api/types';
 
@@ -97,7 +98,7 @@ function roleTone(role: string) {
   }
 }
 
-const BLANK_FORM = { fullName: '', email: '', password: '', phone: '', role: 'SUPERVISOR', eligibleExaminer: false };
+const BLANK_FORM = { fullName: '', email: '', password: '', phone: '', role: 'SUPERVISOR', eligibleExaminer: false, regNumber: '', org: '', groupLabel: '' };
 
 export const AdminAccounts: React.FC = () => {
   const [users, setUsers] = useState<UserResponse[]>([]);
@@ -119,15 +120,27 @@ export const AdminAccounts: React.FC = () => {
     e.preventDefault();
     setSaving(true);
     try {
-      await usersApi.create({
-        fullName: form.fullName,
-        email: form.email,
-        password: form.password,
-        phone: form.phone || undefined,
-        role: form.role,
-        eligibleExaminer: form.eligibleExaminer,
-      });
-      notify('Account created', 'success');
+      if (form.role === 'STUDENT') {
+        await studentsApi.createStudent({
+          fullName: form.fullName,
+          email: form.email,
+          regNumber: form.regNumber,
+          phone: form.phone || undefined,
+          org: form.org || undefined,
+          groupLabel: form.groupLabel || undefined,
+        });
+        notify(`Student account created — login password is the registration number`, 'success');
+      } else {
+        await usersApi.create({
+          fullName: form.fullName,
+          email: form.email,
+          password: form.password,
+          phone: form.phone || undefined,
+          role: form.role,
+          eligibleExaminer: form.eligibleExaminer,
+        });
+        notify('Account created', 'success');
+      }
       setShowCreate(false);
       setForm(BLANK_FORM);
       load();
@@ -221,6 +234,19 @@ export const AdminAccounts: React.FC = () => {
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Create account</div>
             <form onSubmit={handleCreate} style={{ display: 'grid', gap: 12 }}>
               <div>
+                <label className="field-label">Role</label>
+                <select className="input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+
+              {form.role === 'STUDENT' && (
+                <div style={{ padding: '10px 12px', background: 'var(--blue-bg)', border: '1px solid #C7DCF1', borderRadius: 8, fontSize: 12.5, color: 'var(--ink-2)' }}>
+                  &#8505;&nbsp; Student login password will be set to their registration number automatically.
+                </div>
+              )}
+
+              <div>
                 <label className="field-label">Full name</label>
                 <input className="input" required value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))} />
               </div>
@@ -228,26 +254,49 @@ export const AdminAccounts: React.FC = () => {
                 <label className="field-label">Email</label>
                 <input className="input" type="email" required value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
               </div>
-              <div>
-                <label className="field-label">Password</label>
-                <input className="input" type="password" required minLength={8} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
-              </div>
-              <div>
-                <label className="field-label">Phone (optional)</label>
-                <input className="input" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
-              </div>
-              <div>
-                <label className="field-label">Role</label>
-                <select className="input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
-                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-              {(form.role === 'SUPERVISOR' || form.role === 'HOD') && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-                  <input type="checkbox" checked={form.eligibleExaminer} onChange={e => setForm(f => ({ ...f, eligibleExaminer: e.target.checked }))} />
-                  Eligible examiner
-                </label>
+
+              {form.role === 'STUDENT' ? (
+                <>
+                  <div>
+                    <label className="field-label">Registration number</label>
+                    <input className="input mono" required value={form.regNumber} placeholder="e.g. 26972"
+                      onChange={e => setForm(f => ({ ...f, regNumber: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="field-label">Phone (optional)</label>
+                    <input className="input" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="field-label">Organisation / Case study (optional)</label>
+                    <input className="input" value={form.org} placeholder="e.g. Bank of Kigali"
+                      onChange={e => setForm(f => ({ ...f, org: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="field-label">Group label (optional)</label>
+                    <input className="input" value={form.groupLabel} placeholder="e.g. A"
+                      onChange={e => setForm(f => ({ ...f, groupLabel: e.target.value }))} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="field-label">Password</label>
+                    <input className="input" type="password" required minLength={8} value={form.password}
+                      onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="field-label">Phone (optional)</label>
+                    <input className="input" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+                  </div>
+                  {(form.role === 'SUPERVISOR' || form.role === 'HOD') && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                      <input type="checkbox" checked={form.eligibleExaminer} onChange={e => setForm(f => ({ ...f, eligibleExaminer: e.target.checked }))} />
+                      Eligible examiner
+                    </label>
+                  )}
+                </>
               )}
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 9, marginTop: 4 }}>
                 <button type="button" className="btn btn-ghost" onClick={() => setShowCreate(false)}>Cancel</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Creating…' : 'Create account'}</button>

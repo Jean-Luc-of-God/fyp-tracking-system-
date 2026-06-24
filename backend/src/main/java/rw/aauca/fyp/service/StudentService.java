@@ -98,6 +98,39 @@ public class StudentService {
      * Expected columns: reg_number, full_name, email, phone (optional), organisation (optional), group (optional)
      */
     @Transactional
+    public Student createStudent(String fullName, String email, String regNumber,
+                                 String phone, String org, String groupLabel,
+                                 String password, User actor) {
+        if (userRepository.existsByEmail(email)) {
+            throw new RuntimeException("Email already in use: " + email);
+        }
+        String rawPassword = (password != null && !password.isBlank()) ? password : regNumber;
+        User user = User.builder()
+                .email(email)
+                .fullName(fullName)
+                .phone(phone)
+                .role(Role.STUDENT)
+                .passwordHash(passwordEncoder.encode(rawPassword))
+                .enabled(true)
+                .build();
+        userRepository.save(user);
+
+        Student student = Student.builder()
+                .user(user)
+                .regNumber(regNumber)
+                .organisation(org)
+                .groupLabel(groupLabel)
+                .state(StudentState.REGISTERED)
+                .stateEnteredAt(Instant.now())
+                .build();
+        studentRepository.save(student);
+
+        auditService.log(actor, "CREATE_STUDENT", "Student", student.getId(),
+                "Created student account for " + email + " (" + regNumber + ")", null);
+        return student;
+    }
+
+    @Transactional
     public List<Student> importFromExcel(MultipartFile file, User actor) throws IOException {
         List<Student> imported = new ArrayList<>();
 
