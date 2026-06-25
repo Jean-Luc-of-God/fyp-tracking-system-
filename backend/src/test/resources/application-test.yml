@@ -1,0 +1,13 @@
+app:
+  jwt:
+    secret: integration-test-secret-key-minimum-32-chars-xx
+    expiration-ms: 86400000
+  mail:
+    from: test@test.rw
+
+spring:
+  mail:
+    host: localhost
+    port: 25
+    username: ""
+    password: ""

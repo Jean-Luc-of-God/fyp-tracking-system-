@@ -97,9 +97,10 @@ public class ProposalService {
             }
             attempt.setRejectionReason(rejectionReason);
 
-            // Count previously saved rejections + this one
+            // Hibernate auto-flushes the dirty attempt before the count query,
+            // so the count already includes the current rejection — no +1 needed.
             int totalRejections = proposalAttemptRepository
-                    .countByStudentIdAndStatus(studentId, ProposalStatus.REJECTED) + 1;
+                    .countByStudentIdAndStatus(studentId, ProposalStatus.REJECTED);
 
             boolean nowLocked = totalRejections >= MAX_REJECTIONS;
             if (nowLocked) {

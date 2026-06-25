@@ -170,7 +170,7 @@ class ProposalServiceTest {
         when(proposalAttemptRepository.findFirstByStudentIdAndStatus(studentId, ProposalStatus.PENDING))
                 .thenReturn(Optional.of(pending));
         when(proposalAttemptRepository.countByStudentIdAndStatus(studentId, ProposalStatus.REJECTED))
-                .thenReturn(0);
+                .thenReturn(1);
 
         assertThatThrownBy(() -> service.review(studentId, ProposalStatus.REJECTED, null, reviewer))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -185,7 +185,7 @@ class ProposalServiceTest {
         when(proposalAttemptRepository.findFirstByStudentIdAndStatus(studentId, ProposalStatus.PENDING))
                 .thenReturn(Optional.of(pending));
         when(proposalAttemptRepository.countByStudentIdAndStatus(studentId, ProposalStatus.REJECTED))
-                .thenReturn(0); // 0 saved + 1 this one = 1 total
+                .thenReturn(1); // 1 total (current attempt auto-flushed before count)
 
         service.review(studentId, ProposalStatus.REJECTED, "Needs more research", reviewer);
 
@@ -200,7 +200,7 @@ class ProposalServiceTest {
         when(proposalAttemptRepository.findFirstByStudentIdAndStatus(studentId, ProposalStatus.PENDING))
                 .thenReturn(Optional.of(pending));
         when(proposalAttemptRepository.countByStudentIdAndStatus(studentId, ProposalStatus.REJECTED))
-                .thenReturn(1); // 1 saved + 1 this one = 2 total
+                .thenReturn(2); // 2 total (1 previous + current auto-flushed)
 
         service.review(studentId, ProposalStatus.REJECTED, "Still needs work", reviewer);
 
@@ -215,7 +215,7 @@ class ProposalServiceTest {
         when(proposalAttemptRepository.findFirstByStudentIdAndStatus(studentId, ProposalStatus.PENDING))
                 .thenReturn(Optional.of(pending));
         when(proposalAttemptRepository.countByStudentIdAndStatus(studentId, ProposalStatus.REJECTED))
-                .thenReturn(2); // 2 saved + 1 this one = 3 total → lock
+                .thenReturn(3); // 3 total (2 previous + current auto-flushed) → lock
 
         service.review(studentId, ProposalStatus.REJECTED, "Final rejection", reviewer);
 
