@@ -102,6 +102,13 @@
             <version>5.2.5</version>
         </dependency>
 
+        <!-- Rate limiting (login brute-force protection) -->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j-core</artifactId>
+            <version>8.10.1</version>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

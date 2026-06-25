@@ -3,6 +3,7 @@ package rw.aauca.fyp.controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -11,6 +12,9 @@ import rw.aauca.fyp.entity.User;
 import rw.aauca.fyp.service.AuthService;
 import rw.aauca.fyp.service.JwtBlacklistService;
 import rw.aauca.fyp.security.JwtUtil;
+import rw.aauca.fyp.security.LoginRateLimiter;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -20,10 +24,17 @@ public class AuthController {
     private final AuthService authService;
     private final JwtBlacklistService blacklistService;
     private final JwtUtil jwtUtil;
+    private final LoginRateLimiter rateLimiter;
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request, HttpServletRequest http) {
-        return ResponseEntity.ok(authService.login(request, extractClientIp(http)));
+        String ip = extractClientIp(http);
+        if (!rateLimiter.tryConsume(ip)) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .header("Retry-After", "900")
+                    .body(Map.of("message", "Too many login attempts. Please try again in 15 minutes."));
+        }
+        return ResponseEntity.ok(authService.login(request, ip));
     }
 
     private String extractClientIp(HttpServletRequest request) {
