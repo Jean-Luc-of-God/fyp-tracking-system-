@@ -1,29 +1,77 @@
 # FYP Tracking & Accountability System — CLAUDE.md
 
-This file gives Claude Code full context about this project. Read it before making any changes.
+This file is the single source of truth for Claude Code. Read the entire file before doing anything.
 
 ---
 
-## Project Overview
+## Who Is the User
 
-A Final Year Project (FYP) tracking system for AAUCA (American University in Central Africa, Kigali Rwanda).
-It tracks students from project registration through supervision, proposal, pre-defense, and final defense.
+**MANISHIMWE KWIZERA Jean Luc** — final year Software Engineering student at AUCA (Adventist University of Central Africa), Kigali, Rwanda. Student ID: 26972. Supervisor: ISHIMWE M. Prince.
 
-- **Repo**: `Jean-Luc-of-God/fyp-tracking-system-`
-- **Branch**: `claude/inspiring-wright-jyjnjb` — all development goes here
-- **Owner email**: kwizerajeanluc30@gmail.com
+- Git identity: `Jean-Luc-of-God <kjeanluc312@gmail.com>` — EVERY commit must use this exactly, no Co-Authored-By, no other email
+- GitHub repo: `Jean-Luc-of-God/fyp-tracking-system-`
+- Active branch: `feature/fyp-tracking-system` — never push to `main`
+- Never commit `.env`
 
 ---
 
-## Monorepo Structure
+## Where We Are Right Now (read this first)
 
+### App Status: FULLY BUILT & TESTED ✅
+
+The entire application — backend, frontend, tests — is complete and working. **45 tests pass** (7 integration + 23 unit state machine + 15 unit proposal). The backend is currently running locally on `http://localhost:9191`. Login with `admin@aauca.ac.rw` / `Admin@1234`.
+
+### Thesis Status: Chapters 1–5 Written ✅
+
+The thesis report for this project has been written and compiled. The latest compiled file is:
+- **`/home/manishimwe-kwizera-jean-luc/Downloads/FYP_Report_Chapters15_FORMATTED.docx`** — Chapters 1–5 complete
+- **`/home/manishimwe-kwizera-jean-luc/Downloads/FYP_Report_Chapters15_FORMATTED.pdf`** — PDF version
+- Source markdown: `chapter-01.md`, `chapter-02.md`, `chapter-03.md` (in project root), `chapter-05.md` (in project root)
+- Chapter 4 was compiled into `FYP_Report_Chapters14_FORMATTED.docx` in Downloads and then Chapter 5 was appended
+
+### What Is Still Left To Do
+
+1. **Thesis diagrams** — Jean-Luc is generating HD diagrams at claude.ai/design using prompts from `/home/manishimwe-kwizera-jean-luc/Desktop/diagram-prompts.txt`. There are 9 UML/architecture diagrams (Figures 1–9) and 8 UI screenshots (Figures 10–17) that need to replace the `[Figure placeholder — ...]` text in the Word document. The diagrams need to be A4-sized (794×1123px portrait). When inserting diagrams into the docx, use python-docx.
+2. **References / Bibliography** — not yet written. Will be added as a final section.
+3. **Deployment** — app is ready to deploy. `render.yaml` is in the repo root. Plan: Render (backend) + Supabase (PostgreSQL) + Upstash (Redis) + Vercel (frontend). The user has not yet created accounts on these services.
+
+---
+
+## Running Locally
+
+### Maven location (no system-wide mvn)
+```bash
+/opt/idea-IU-261.25134.95/plugins/maven/lib/maven3/bin/mvn
 ```
-fyp-tracking-system-/
-├── backend/          # Spring Boot 3.2.5, Java 17+, Maven
-├── frontend/         # React 19, TypeScript, Vite
-├── docker-compose.yml
-├── .env.example      # Copy to .env and fill in values
-└── CLAUDE.md         # This file
+
+### Start backend (must export .env first)
+```bash
+cd /home/manishimwe-kwizera-jean-luc/fyp-tracking-system-/backend
+export $(grep -v '^#' ../.env | xargs)
+/opt/idea-IU-261.25134.95/plugins/maven/lib/maven3/bin/mvn spring-boot:run > /tmp/backend.log 2>&1 &
+# Wait for: curl http://localhost:9191/actuator/health → {"status":"UP"}
+```
+
+### Start frontend
+```bash
+cd /home/manishimwe-kwizera-jean-luc/fyp-tracking-system-/frontend
+npm run dev
+# Runs on http://localhost:5173
+```
+
+### Test login
+```bash
+curl -s -X POST http://localhost:9191/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@aauca.ac.rw","password":"Admin@1234"}'
+```
+
+### Run tests
+```bash
+cd backend
+export $(grep -v '^#' ../.env | xargs)
+/opt/idea-IU-261.25134.95/plugins/maven/lib/maven3/bin/mvn test
+# Expected: 45 tests, 0 failures
 ```
 
 ---
@@ -32,15 +80,17 @@ fyp-tracking-system-/
 
 | Layer | Technology |
 |---|---|
-| Backend | Spring Boot 3.2.5, Java 17 (works on 21) |
+| Backend | Spring Boot 3.2.5, Java 17 |
 | ORM | Spring Data JPA + Hibernate |
-| Database | PostgreSQL 16 |
-| Migrations | Flyway |
-| Cache | Redis 7 |
-| Auth | Spring Security + JWT (jjwt 0.11.5), BCrypt cost 12 |
+| Database | PostgreSQL 16 (local: fyp_tracker, user: fyp_user) |
+| Migrations | Flyway — V1 through V5 applied |
+| Cache / Blacklist | Redis 7 |
+| Auth | Spring Security + JWT (jjwt **0.12.6**), BCrypt cost 12 |
+| Rate limiting | Bucket4j 8.10.1 — 5 login attempts / IP / 15 min |
 | Email | Spring Mail (JavaMailSender) |
 | Excel import | Apache POI 5.2.5 |
 | Frontend | React 19, TypeScript, Vite |
+| Port | Backend: **9191** (not 8080) |
 
 ---
 
@@ -49,13 +99,6 @@ fyp-tracking-system-/
 ```
 STUDENT, SUPERVISOR, FACILITATOR, HOD, EXAMINER, SUPERADMIN
 ```
-
-- **SUPERADMIN** — manages users, can do everything
-- **HOD** — Head of Department, oversight and approvals
-- **FACILITATOR** — coordinates FYP process
-- **SUPERVISOR** — assigned per student, schedules meetings, signs off
-- **EXAMINER** — assigned to pre-defense / defense panels
-- **STUDENT** — submits proposals, tracks own progress
 
 ---
 
@@ -71,211 +114,20 @@ BOOK_SUBMITTED → PRE_DEFENSE → DEFENSE → COMPLETED
 Any non-terminal state → WITHDRAWN
 ```
 
-- `FLAGGED` is a boolean column on the student record, not a state — any authorised actor can flag a student while they remain in their current state.
-- `WITHDRAWN` is terminal: once withdrawn, no further transitions are allowed.
-- `COMPLETED` is terminal.
-- Proposal rejection attempts are tracked in the `proposal_attempts` table (Phase 2b enforces the 3-attempt limit there).
-- Prototype re-presentation attempts are tracked in `students.proto_attempts`.
-
-Valid transitions are enforced in `StudentStateService.java` — invalid transitions throw `InvalidStateTransitionException`.
+- `FLAGGED` is a boolean on the student record, not a state
+- `WITHDRAWN` and `COMPLETED` are terminal
+- Proposal locked after 3 rejections — HOD must unlock via `POST /api/proposals/{id}/unlock`
+- Enforced in `StudentStateService.java` — invalid transitions throw `InvalidStateTransitionException`
 
 ---
 
-## Default Credentials (dev only)
+## Default Login
 
 | Email | Password | Role |
 |---|---|---|
 | admin@aauca.ac.rw | Admin@1234 | SUPERADMIN |
 
----
-
-## Running Locally
-
-### Prerequisites
-- Java 17+ (`java --version`)
-- Maven (`mvn --version`)
-- PostgreSQL 16 running locally
-- Redis running locally
-
-### Database setup (first time only)
-```bash
-psql -U postgres -c "CREATE USER fyp_user WITH PASSWORD 'fyp_pass';"
-psql -U postgres -c "CREATE DATABASE fyp_tracker OWNER fyp_user;"
-psql -U postgres -d fyp_tracker -c "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";"
-```
-
-### Start backend
-```bash
-cp .env.example .env   # edit JWT_SECRET at minimum
-cd backend
-mvn spring-boot:run
-```
-Backend runs on `http://localhost:8080`. Flyway auto-runs migrations on startup.
-
-### Start frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-Frontend runs on `http://localhost:5173`.
-
-### Health check
-```bash
-curl http://localhost:8080/actuator/health
-# Expected: {"status":"UP"}
-```
-
----
-
-## Environment Variables (.env)
-
-```
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=fyp_tracker
-DB_USER=fyp_user
-DB_PASS=fyp_pass
-
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-JWT_SECRET=<any-random-string-at-least-32-chars>
-
-MAIL_HOST=smtp.gmail.com
-MAIL_PORT=587
-MAIL_USER=your-email@aauca.ac.rw
-MAIL_PASS=your-app-password
-
-FRONTEND_URL=http://localhost:5173
-```
-
----
-
-## Backend Package Structure
-
-```
-rw.aauca.fyp/
-├── config/
-│   └── SecurityConfig.java         # Spring Security, JWT filter, CORS, BCrypt bean
-├── controller/
-│   ├── AuthController.java         # POST /api/auth/login
-│   ├── StudentController.java      # /api/students/**
-│   ├── SupervisionController.java  # /api/supervision/**
-│   └── UserController.java         # /api/users/**
-├── dto/
-│   ├── request/                    # CreateUserRequest, LoginRequest, AvailabilitySlotRequest,
-│   │                               #   ScheduleMeetingRequest, MeetingOutcomeRequest
-│   └── response/                   # AuthResponse, StudentResponse
-├── entity/
-│   ├── User.java                   # implements UserDetails, passwordHash field
-│   ├── Student.java                # OneToOne → User, ManyToOne → supervisor User
-│   ├── StateTransition.java        # every state change recorded here
-│   ├── AvailabilitySlot.java       # supervisor weekly time windows
-│   ├── Meeting.java                # supervisor-student meetings
-│   ├── ProposalAttempt.java        # tracks proposal submissions (max 3)
-│   ├── PanelAssignment.java        # pre-defense / defense panel
-│   ├── NotificationLog.java        # every email sent, with status
-│   ├── AuditLog.java               # immutable action log
-│   └── WhatsAppGroup.java          # WhatsApp group links per cohort
-├── enums/
-│   ├── Role.java                   # STUDENT SUPERVISOR FACILITATOR HOD EXAMINER SUPERADMIN
-│   ├── StudentState.java           # 13 states (includes WITHDRAWN)
-│   ├── NotificationStatus.java     # PENDING SENT FAILED RETRIED
-│   ├── ProposalStatus.java         # PENDING ACCEPTED REJECTED
-│   ├── PanelType.java              # PRE_DEFENSE DEFENSE
-│   └── PanelOutcome.java           # CLEARED PASSED REFERRED FAILED
-├── exception/
-│   ├── InvalidStateTransitionException.java
-│   └── GlobalExceptionHandler.java  # @RestControllerAdvice
-├── repository/                     # JPA repositories for all entities
-├── security/
-│   ├── JwtUtil.java                # generate/validate JWT, HMAC-SHA256
-│   └── JwtAuthFilter.java          # OncePerRequestFilter, reads Bearer token
-└── service/
-    ├── AuthService.java            # login → JWT
-    ├── UserService.java            # CRUD users, enable/disable, reset password
-    ├── StudentService.java         # Excel import (Apache POI), assign supervisor
-    ├── StudentStateService.java    # state machine enforcement + audit
-    ├── SupervisionService.java     # availability slots + meetings
-    └── AuditService.java           # write to audit_logs
-```
-
----
-
-## API Endpoints (implemented so far)
-
-### Auth
-| Method | Path | Role | Description |
-|---|---|---|---|
-| POST | /api/auth/login | public | Returns JWT token |
-
-### Users
-| Method | Path | Role | Description |
-|---|---|---|---|
-| GET | /api/users | SUPERADMIN | List all users |
-| GET | /api/users/role/{role} | HOD,FACILITATOR,SUPERADMIN | Filter by role |
-| GET | /api/users/examiners | HOD,FACILITATOR,SUPERADMIN | Eligible examiners |
-| POST | /api/users | SUPERADMIN | Create user |
-| PATCH | /api/users/{id}/enabled | SUPERADMIN | Enable/disable |
-| POST | /api/users/{id}/reset-password | SUPERADMIN | Reset password |
-
-### Students
-| Method | Path | Role | Description |
-|---|---|---|---|
-| GET | /api/students | HOD,FACILITATOR,SUPERADMIN | List all |
-| GET | /api/students/{id} | HOD,FACILITATOR,SUPERADMIN,SUPERVISOR | Get by ID |
-| GET | /api/students/state/{state} | HOD,FACILITATOR,SUPERADMIN | Filter by state |
-| POST | /api/students/import | HOD,FACILITATOR,SUPERADMIN | Excel import |
-| POST | /api/students/{id}/assign-supervisor | HOD,FACILITATOR,SUPERADMIN | Assign supervisor |
-| POST | /api/students/{id}/transition | (role-checked in service) | Change state |
-| PATCH | /api/students/{id}/sign-off-book | SUPERVISOR | Mark book signed |
-| PATCH | /api/students/{id}/flag | HOD,FACILITATOR,SUPERADMIN | Flag student |
-| POST | /api/students/{id}/withdraw | HOD,FACILITATOR,SUPERADMIN | Withdraw student |
-
-### Proposals
-| Method | Path | Role | Description |
-|---|---|---|---|
-| POST | /api/proposals/{studentId}/submit | STUDENT,HOD,FACILITATOR,SUPERADMIN | Submit proposal (from PROTOTYPE_GRANTED or PROPOSAL_UNDER_REVIEW) |
-| POST | /api/proposals/{studentId}/review | HOD,FACILITATOR,SUPERADMIN | Accept or reject with reason; locks after 3 rejections |
-| POST | /api/proposals/{studentId}/unlock | HOD,SUPERADMIN | Unlock submission after 3 rejections |
-| GET | /api/proposals/{studentId}/history | all roles | Full proposal attempt history |
-
-### Panels
-| Method | Path | Role | Description |
-|---|---|---|---|
-| POST | /api/panels/assign | HOD,FACILITATOR,SUPERADMIN | Assign examiner to a panel (no supervisor as own examiner) |
-| PATCH | /api/panels/{id}/outcome | EXAMINER,HOD,FACILITATOR,SUPERADMIN | Record panel outcome; auto-transitions state on CLEARED/PASSED |
-| DELETE | /api/panels/{id} | HOD,FACILITATOR,SUPERADMIN | Remove assignment before outcome is recorded |
-| GET | /api/panels/student/{studentId} | all roles | List all panel assignments for a student |
-| GET | /api/panels/me | EXAMINER | Examiner's own panel assignments |
-
-### Supervision
-| Method | Path | Role | Description |
-|---|---|---|---|
-| POST | /api/supervision/slots | SUPERVISOR | Add availability slot |
-| GET | /api/supervision/slots/me | SUPERVISOR | My slots |
-| GET | /api/supervision/slots/{supervisorId} | HOD,FACILITATOR,SUPERADMIN,STUDENT | Supervisor's slots |
-| DELETE | /api/supervision/slots/{slotId} | SUPERVISOR | Deactivate slot |
-| POST | /api/supervision/meetings | SUPERVISOR | Schedule meeting |
-| PATCH | /api/supervision/meetings/{id}/confirm | SUPERVISOR | Confirm meeting |
-| PATCH | /api/supervision/meetings/{id}/outcome | SUPERVISOR | Record attendance/notes |
-| GET | /api/supervision/meetings/me | SUPERVISOR | My meetings |
-| GET | /api/supervision/meetings/student/{id} | SUPERVISOR,HOD,FACILITATOR,SUPERADMIN | Student's meetings |
-
----
-
-## Excel Import Format
-
-`POST /api/students/import` — multipart file, field name: `file`
-
-Required columns (case-insensitive headers):
-```
-reg_number | full_name | email | phone | org | group
-```
-
-- `org` = organization/company for industry-based projects (nullable)
-- `group` = WhatsApp group name/link (nullable)
+Password was reset by V5 migration. If login fails, restart the backend (Flyway runs V5 on startup and resets the hash).
 
 ---
 
@@ -283,52 +135,154 @@ reg_number | full_name | email | phone | org | group
 
 Located at `backend/src/main/resources/db/migration/`
 
-| File | Description |
-|---|---|
-| V1__init_schema.sql | All tables: users, students, state_transitions, meetings, panels, etc. |
-| V2__seed_superadmin.sql | Seeds admin@aauca.ac.rw / Admin@1234 |
+| File | Description | Status |
+|---|---|---|
+| V1__init_schema.sql | All 10 tables | Applied |
+| V2__seed_superadmin.sql | Seeds admin user (ON CONFLICT DO NOTHING) | Applied |
+| V3__add_proposal_locked.sql | Adds proposal_locked column | Applied |
+| V4__add_letter_rejection_reason.sql | Adds rejection reason to case letters | Applied |
+| V5__reset_superadmin_password.sql | Resets admin password via ON CONFLICT DO UPDATE | Applied |
 
-**Important**: Never edit a migration that has already been applied to a database. Add a new V3__ file instead. If you must edit an existing one during development, run `mvn flyway:repair` to fix the checksum.
-
----
-
-## Known Issues Fixed
-
-- `@Builder.Default` required on all `Instant.now()` fields in entities — Lombok's `@Builder` ignores field initializers without it, causing NOT NULL violations
-- `JwtAuthFilter` injects `UserRepository` directly (not `UserDetailsService`) to avoid circular dependency with `SecurityConfig`
-- Spring mail health check disabled in `application.yml` (no SMTP creds in dev)
-- BCrypt hash in V2 seed was invalid — replaced with a verified `$2b$12$` hash
+**Never edit an applied migration. Add V6__ for new changes.**
 
 ---
 
-## Development Plan
+## Security Features (all implemented)
 
-### Phase 1 — Backend Foundation ✅ COMPLETE & VERIFIED
-All tests pass: health, login, auth enforcement, user CRUD, student list, state machine error handling.
-
-### Phase 2 — Backend Features (IN PROGRESS)
-- **2a** Supervision module (slots + meetings) ✅ Built, pushed
-- **2b** Proposal module — submit, accept/reject with reason, 3-attempt limit ✅ Built
-- **2c** Panel assignment — pre-defense/defense panels, no supervisor as own examiner ✅ Built
-- **2d** Email notifications — on state transitions + milestone reminders
-- **2e** Audit + notification log query endpoints
-
-### Phase 3 — Frontend Integration
-- Wire login to real `/api/auth/login`
-- Replace mock data (`fypData.ts`) with real API calls
-- Role-based routing and views
-
-### Phase 4 — Testing & Hardening
-- Integration tests for state machine
-- End-to-end smoke test
+- JWT auth with HMAC-SHA384, 24h expiry, blacklist on logout (Redis)
+- BCrypt cost 12 for passwords
+- Login rate limit: 5 attempts / IP / 15 min (Bucket4j, in-memory)
+- Role-based access control via `@PreAuthorize` on all endpoints
+- HTTP security headers: HSTS, X-Frame-Options, XSS Protection, Content-Type-Options
+- `open-in-view: false` in application.yml
+- CORS reads from `FRONTEND_URL` env var (allows localhost:* for dev + prod URL)
 
 ---
 
-## Important Notes for Claude Code
+## Backend Package Structure
 
-- All commits must be authored as `Jean-Luc-of-God <kwizerajeanluc30@gmail.com>`
-- Never push to `main` — only to `claude/inspiring-wright-jyjnjb`
-- Never commit `.env` — it is gitignored
-- Test every feature before marking it done — run curl tests against the live server
-- If you edit a Flyway migration that was already applied, run `mvn flyway:repair`
-- The frontend still uses mock data — do not connect it until Phase 2 is fully complete
+```
+rw.aauca.fyp/
+├── config/SecurityConfig.java          # CORS uses ${app.frontend-url} env var
+├── controller/
+│   ├── AuthController.java             # POST /api/auth/login, POST /api/auth/logout
+│   ├── StudentController.java          # /api/students/**
+│   ├── ProposalController.java         # /api/proposals/**
+│   ├── PanelController.java            # /api/panels/**
+│   ├── SupervisionController.java      # /api/supervision/**
+│   └── UserController.java             # /api/users/**
+├── security/
+│   ├── JwtUtil.java                    # jjwt 0.12.6 API (verifyWith, parseSignedClaims)
+│   ├── JwtAuthFilter.java              # reads Bearer token, checks blacklist
+│   ├── JwtBlacklistService.java        # Redis-backed logout blacklist
+│   └── LoginRateLimiter.java           # Bucket4j, ConcurrentHashMap<IP, Bucket>
+└── service/
+    ├── AuthService.java
+    ├── UserService.java
+    ├── StudentService.java             # Excel import via Apache POI
+    ├── StudentStateService.java        # 13-state machine — the core
+    ├── ProposalService.java            # 3-attempt limit, locking, Hibernate flush bug fixed
+    ├── PanelService.java               # no supervisor as own examiner rule
+    ├── SupervisionService.java         # slots + meetings
+    ├── EmailService.java               # all notification methods
+    └── AuditService.java               # immutable audit log
+```
+
+---
+
+## API Endpoints (all implemented)
+
+### Auth
+| POST | /api/auth/login | public |
+| POST | /api/auth/logout | authenticated — blacklists JWT |
+
+### Users: /api/users/**
+GET list, GET by role, GET examiners, POST create, PATCH enable/disable, POST reset-password
+
+### Students: /api/students/**
+GET list, GET by id, GET by state, POST import (Excel), POST assign-supervisor, POST transition, PATCH sign-off-book, PATCH flag, POST withdraw
+
+### Proposals: /api/proposals/{studentId}/**
+POST submit, POST review (accept/reject), POST unlock, GET history
+
+### Panels: /api/panels/**
+POST assign, PATCH outcome (auto-transitions state), DELETE, GET by student, GET /me (examiner)
+
+### Supervision: /api/supervision/**
+POST slots, GET slots/me, GET slots/{supervisorId}, DELETE slot, POST meetings, PATCH confirm, PATCH outcome, GET meetings/me, GET meetings/student/{id}
+
+---
+
+## Deployment Setup (ready, not yet deployed)
+
+`render.yaml` is in the repo root. Planned stack:
+- **Backend** → Render (free tier, root dir: `backend/`)
+- **PostgreSQL** → Supabase (free)
+- **Redis** → Upstash (free)
+- **Frontend** → Vercel (free, root dir: `frontend/`, env var: `VITE_API_URL=<render url>`)
+
+The backend reads `PORT` env var for the port (Railway/Render inject this). Redis password supported via `REDIS_PASSWORD` env var. CORS reads `FRONTEND_URL` env var.
+
+---
+
+## Thesis Book — Full Status
+
+### Files
+- Source chapters: `chapter-01.md`, `chapter-02.md`, `chapter-03.md`, `chapter-05.md` in project root
+- Compiled book: `/home/manishimwe-kwizera-jean-luc/Downloads/FYP_Report_Chapters15_FORMATTED.docx`
+- Template used: `Shema Hugues-25603 (1) (1).docx` (AUCA Faculty of IT format, in project root)
+- To rebuild PDF: `soffice --headless -env:UserInstallation=file:///tmp/lo-profile --convert-to pdf <file.docx> --outdir <dir>`
+- LibreOffice is installed. Microsoft Word is NOT.
+
+### Chapter Status
+| Chapter | Title | Status |
+|---|---|---|
+| 1 | General Introduction | ✅ Written & compiled |
+| 2 | Analysis of Existing System | ✅ Written & compiled |
+| 3 | Requirements Analysis & Design | ✅ Written & compiled |
+| 4 | Implementation | ✅ Written & compiled |
+| 5 | Conclusion & Recommendations | ✅ Written & compiled |
+| References | Bibliography | ❌ Not yet written |
+| Appendices | API list, test results | ❌ Not yet written |
+
+### Diagrams (Figures 1–17) — IN PROGRESS
+Jean-Luc is generating diagrams at claude.ai/design using prompts from:
+`/home/manishimwe-kwizera-jean-luc/Desktop/diagram-prompts.txt`
+
+**Key rule**: diagrams must be A4 portrait size (794×1123px at 96dpi) to fit in the thesis.
+
+| Figure | Description | Status |
+|---|---|---|
+| 1 | Current system flowchart | Generating |
+| 2 | Use case diagram | Generating |
+| 3 | Class diagram | Generating |
+| 4 | Login sequence diagram | Generating |
+| 5 | State transition sequence diagram | Generating |
+| 6 | Login activity diagram | Generating |
+| 7 | Student journey activity diagram | Generating |
+| 8 | Database schema (ER diagram) | Generating |
+| 9 | System architecture diagram | Generating |
+| 10–17 | UI screenshots from live app | Need browser screenshots |
+
+For screenshots (Figures 10–17): app is live at `http://localhost:5173`. Login: admin@aauca.ac.rw / Admin@1234.
+
+---
+
+## Known Issues Fixed (important for debugging)
+
+- `@Builder.Default` required on Lombok entity fields with initializers — without it, `state` and `enabled` are null when using builder
+- `JwtAuthFilter` injects `UserRepository` directly (not `UserDetailsService`) to avoid circular dependency
+- Spring mail health check disabled in `application.yml`
+- Proposal service: Hibernate FlushMode.AUTO flushes the dirty `attempt` before `countByStudentIdAndStatus` runs — count already includes current rejection, no `+1` needed. This was a production bug that was found and fixed.
+- jjwt 0.12.6 API: use `verifyWith(key)`, `parseSignedClaims(token).getPayload()`, builder uses `id/subject/issuedAt/expiration` (not `setId/setSubject`)
+- Testcontainers abandoned (Docker API version incompatibility) — integration tests use dev PostgreSQL with `@Transactional` rollback
+
+---
+
+## Important Notes
+
+- Maven binary: `/opt/idea-IU-261.25134.95/plugins/maven/lib/maven3/bin/mvn`
+- Backend port: **9191** (not 8080 — something else runs on 8080)
+- Always `export $(grep -v '^#' ../.env | xargs)` before running Maven — Spring Boot does not auto-read `.env` files
+- If Flyway fails with "more than one migration with version X", check `target/classes/db/migration/` for stale files from old builds and delete them, then restart
+- The `.env` file exists and has a valid `JWT_SECRET` (the placeholder value from `.env.example` is long enough for dev)
