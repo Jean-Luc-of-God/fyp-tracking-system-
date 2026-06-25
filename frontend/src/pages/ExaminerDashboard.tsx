@@ -18,20 +18,44 @@ import { notify } from '../components/LetterUI';
 
 /* ---------------- Examiner Dashboard ---------------- */
 export const ExaminerDashboard: React.FC = () => {
-  const { students, activeUserId } = useAppContext();
+  const { students, activeUserId, supervisorById } = useAppContext();
   const EX_ID = activeUserId || "sup-hab";
-  
-  // Examinees are students assigned to me to examine
-  const examinees = students.filter(s => s.examinerPreId === EX_ID || s.examinerDefId === EX_ID);
-  // Supervised are students I supervise
+
+  const [panels, setPanels] = useState<PanelAssignmentResponse[] | null>(null);
+
+  useEffect(() => {
+    if (!getToken()) return;
+    panelsApi.mine()
+      .then(list => setPanels(list))
+      .catch(() => setPanels(null));
+  }, [EX_ID]);
+
+  const useRealPanels = getToken() && panels !== null;
+
+  // Real path: derive unique student IDs from panel assignments
+  const realExamineeIds = useRealPanels
+    ? [...new Set(panels!.map(p => p.studentId))]
+    : [];
+  const realExaminees = realExamineeIds
+    .map(id => students.find(s => s.id === id))
+    .filter((s): s is NonNullable<typeof s> => s !== undefined);
+
+  // Mock path fallback
+  const mockExaminees = students.filter(s => s.examinerPreId === EX_ID || s.examinerDefId === EX_ID);
+
+  const examinees = useRealPanels ? realExaminees : mockExaminees;
   const supervised = students.filter(s => s.supervisorId === EX_ID);
+
+  const preDefensePanels = panels?.filter(p => p.panelType === 'PRE_DEFENSE') ?? [];
+  const pendingCount = preDefensePanels.filter(p => !p.outcome).length;
+  const clearedCount = preDefensePanels.filter(p => p.outcome === 'CLEARED').length;
 
   return (
     <div>
       <SectionTitle sub="Students assigned to you to examine. This is separate from anyone you supervise.">
         Assigned to Me
       </SectionTitle>
-      
+
       <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 16px", background: "var(--violet-bg)", border: "1px solid #D9CDEC", borderRadius: 10, marginBottom: 18, fontSize: 13 }}>
         <Icon name="scale" size={17} style={{ color: "var(--violet)", flex: "none", marginTop: 1 }} />
         <span style={{ color: "var(--ink-2)" }}>
@@ -41,8 +65,8 @@ export const ExaminerDashboard: React.FC = () => {
 
       <div className="resp-cols-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 18 }}>
         <MetricCard label="Assigned to examine" value={examinees.length} icon="scale" tone="navy" />
-        <MetricCard label="Pre-defense pending" value={examinees.filter(s => s.stateIndex === 9 && s.predefenseStatus !== "Cleared to defend").length} icon="clock" tone="amber" />
-        <MetricCard label="Cleared to defend" value={examinees.filter(s => s.predefenseStatus === "Cleared to defend").length} icon="checkCircle" tone="green" />
+        <MetricCard label="Pre-defense pending" value={useRealPanels ? pendingCount : examinees.filter(s => s.stateIndex === 9 && s.predefenseStatus !== "Cleared to defend").length} icon="clock" tone="amber" />
+        <MetricCard label="Cleared to defend" value={useRealPanels ? clearedCount : examinees.filter(s => s.predefenseStatus === "Cleared to defend").length} icon="checkCircle" tone="green" />
       </div>
 
       <div className="card" style={{ overflow: "hidden" }}>
@@ -57,30 +81,39 @@ export const ExaminerDashboard: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {examinees.map(s => (
-              <tr key={s.id} style={{ cursor: "default" }}>
-                <td>
-                  <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                    <Avatar name={s.name} role="Student" size={26} />
-                    <div>
-                      <div style={{ fontWeight: 600, color: "var(--ink)" }}>{s.name}</div>
-                      <div className="mono muted" style={{ fontSize: 10.5 }}>{s.id}</div>
+            {examinees.map(s => {
+              const supName = s.supervisorId
+                ? (supervisorById[s.supervisorId]?.name ?? supById[s.supervisorId]?.name ?? s.supervisorId)
+                : "—";
+              const panelForStu = panels?.find(p => p.studentId === s.id && p.panelType === 'PRE_DEFENSE');
+              const preStatus = useRealPanels
+                ? (panelForStu?.outcome === 'CLEARED' ? "Cleared to defend" : panelForStu ? "Scheduled" : null)
+                : s.predefenseStatus;
+              return (
+                <tr key={s.id} style={{ cursor: "default" }}>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      <Avatar name={s.name} role="Student" size={26} />
+                      <div>
+                        <div style={{ fontWeight: 600, color: "var(--ink)" }}>{s.name}</div>
+                        <div className="mono muted" style={{ fontSize: 10.5 }}>{s.reg}</div>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td className="muted">{s.supervisorId ? supById[s.supervisorId]?.name || s.supervisorId : "—"}</td>
-                <td><StateBadge stateIndex={s.stateIndex} short /></td>
-                <td>
-                  {s.predefenseStatus ? (
-                    <Badge tone={s.predefenseStatus === "Cleared to defend" ? "green" : "amber"} dot>
-                      {s.predefenseStatus}
-                    </Badge>
-                  ) : (
-                    <span className="faint">—</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="muted">{supName}</td>
+                  <td><StateBadge stateIndex={s.stateIndex} short /></td>
+                  <td>
+                    {preStatus ? (
+                      <Badge tone={preStatus === "Cleared to defend" ? "green" : "amber"} dot>
+                        {preStatus}
+                      </Badge>
+                    ) : (
+                      <span className="faint">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
             {!examinees.length && (
               <tr>
                 <td colSpan={4} className="muted" style={{ textAlign: "center", padding: 20 }}>
