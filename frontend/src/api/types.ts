@@ -30,6 +30,7 @@ export interface StudentResponse {
   flagged: boolean;
   note: string | null;
   letterRejectionReason: string | null;
+  letterFileName: string | null;
 }
 
 export type StudentState =

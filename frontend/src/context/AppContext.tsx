@@ -10,14 +10,6 @@ import type {
   AppState
 } from '../types';
 import {
-  buildMockStudents,
-  GROUP_SESSIONS,
-  NOTIF_LOG,
-  AUDIT_LOG,
-  PENDING,
-  WA_GROUPS,
-  PREDEFENSE_WA,
-  AVAILABILITY,
   fmt,
   meetingsFor
 } from '../utils/fypData';
@@ -30,7 +22,7 @@ import { INDEX_STATE } from '../api/types';
 import { mapStudent, mapSupervisor, mapAuditLog, mapNotificationLog } from '../utils/mappers';
 import type { Supervisor } from '../types';
 
-const LOCAL_STORAGE_KEY = 'fyp_tracker_state_v1';
+const LOCAL_STORAGE_KEY = 'fyp_tracker_state_v2';
 
 export interface CaseLetterState {
   status: 'none' | 'requested' | 'submitted' | 'approved' | 'rejected';
@@ -114,31 +106,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
     
-    // Seed default letters matching prototype store.js
-    const DAY = 86400000;
-    const now = Date.now();
-    const defaultLetters: { [stuId: string]: CaseLetterState } = {
-      "STU-2026-041": { status: "requested", requestedTs: now - 1.6 * DAY, deadlineTs: now + 3.4 * DAY, batch: "B-2026-01" },
-      "STU-2026-042": { status: "requested", requestedTs: now - 6.8 * DAY, deadlineTs: now + 0.22 * DAY, batch: "B-2026-01" },
-      "STU-2026-043": { status: "requested", requestedTs: now - 9 * DAY, deadlineTs: now - 0.5 * DAY, batch: "B-2026-01" },
-      "STU-2026-044": { status: "submitted", requestedTs: now - 5 * DAY, deadlineTs: now + 2 * DAY, submittedTs: now - 1.1 * DAY, batch: "B-2026-01", file: "case-letter-rssb.pdf" },
-      "STU-2026-045": { status: "submitted", requestedTs: now - 6 * DAY, deadlineTs: now + 1 * DAY, submittedTs: now - 0.4 * DAY, batch: "B-2026-01", file: "case-letter-zipline.pdf" },
-    };
-
-
-
     return {
-      students: buildMockStudents(),
-      groupSessions: GROUP_SESSIONS,
-      notificationLogs: NOTIF_LOG,
-      auditLogs: AUDIT_LOG,
-      pendingItems: PENDING,
-      waGroups: WA_GROUPS,
-      predefenseWa: PREDEFENSE_WA,
-      availability: AVAILABILITY,
-      letters: defaultLetters,
-      activeUserRole: 'student',
-      activeUserId: 'STU-2026-014', // Keza Ihirwe
+      students: [],
+      groupSessions: [],
+      notificationLogs: [],
+      auditLogs: [],
+      pendingItems: [],
+      waGroups: {},
+      predefenseWa: {},
+      availability: {},
+      letters: {},
+      activeUserRole: 'superadmin',
+      activeUserId: '',
     };
   });
 

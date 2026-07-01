@@ -12,7 +12,14 @@ import rw.aauca.fyp.enums.StudentState;
 import rw.aauca.fyp.service.StudentService;
 import rw.aauca.fyp.service.StudentStateService;
 
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+
 import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -135,7 +142,9 @@ public class StudentController {
 
     @PostMapping("/me/submit-case-letter")
     @PreAuthorize("hasRole('STUDENT')")
-    public ResponseEntity<StudentResponse> submitCaseLetter(@AuthenticationPrincipal User actor) {
+    public ResponseEntity<StudentResponse> submitCaseLetter(
+            @AuthenticationPrincipal User actor,
+            @RequestParam(value = "file", required = false) MultipartFile file) throws IOException {
         var student = studentService.getByUserId(actor.getId());
         if (student.getProjectTopic() == null || student.getProjectTopic().isBlank()) {
             throw new RuntimeException("Please set your project topic before submitting your case study letter.");
@@ -143,8 +152,12 @@ public class StudentController {
         if (student.getOrganisation() == null || student.getOrganisation().isBlank()) {
             throw new RuntimeException("Please set your case study organisation before submitting.");
         }
-        return ResponseEntity.ok(StudentResponse.from(
-                stateService.transition(student, StudentState.CASE_LETTER_SUBMITTED, actor, null)));
+        if (file != null && !file.isEmpty()) {
+            studentService.saveLetterFile(student, file);
+        }
+        var transitioned = stateService.transition(student, StudentState.CASE_LETTER_SUBMITTED, actor, null);
+        var reloaded = studentService.getById(transitioned.getId());
+        return ResponseEntity.ok(StudentResponse.from(reloaded));
     }
 
     @PostMapping("/{id}/transition")
@@ -179,5 +192,21 @@ public class StudentController {
                                                     @AuthenticationPrincipal User actor) {
         return ResponseEntity.ok(StudentResponse.from(
                 studentService.withdrawStudent(id, body.getOrDefault("note", null), actor)));
+    }
+
+    @GetMapping("/{id}/letter-file")
+    @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN','SUPERVISOR')")
+    public ResponseEntity<Resource> downloadLetterFile(@PathVariable UUID id) throws IOException {
+        var student = studentService.getById(id);
+        if (student.getLetterFileName() == null) {
+            return ResponseEntity.notFound().build();
+        }
+        Path file = Paths.get("uploads/case-letters/" + id + "/" + student.getLetterFileName());
+        Resource resource = new UrlResource(file.toUri());
+        if (!resource.exists()) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + student.getLetterFileName() + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(resource);
     }
 }

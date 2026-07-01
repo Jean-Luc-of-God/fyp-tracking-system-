@@ -17,7 +17,6 @@ import { Timeline } from '../components/Timeline';
 import {
   fmt,
   supById,
-  SUPERVISORS,
   STATES,
   TEMPLATES
 } from '../utils/fypData';
@@ -469,8 +468,8 @@ interface FacStudentsProps {
 
 export const FacStudents: React.FC<FacStudentsProps> = ({ focusStudent, onClearFocus }) => {
   const { students, supervisors: apiSups, supervisorById: apiSupById } = useAppContext();
-  const supList = apiSups.length > 0 ? apiSups : SUPERVISORS;
-  const supMap = apiSups.length > 0 ? apiSupById : supById;
+  const supList = apiSups;
+  const supMap = apiSupById;
   const [open, setOpen] = useState<string | null>(focusStudent);
   const [q, setQ] = useState("");
   const [stage, setStage] = useState("all");
@@ -571,8 +570,8 @@ export const FacStudents: React.FC<FacStudentsProps> = ({ focusStudent, onClearF
 /* ---------------- FacExaminers Component ---------------- */
 export const FacExaminers: React.FC = () => {
   const { students, assignExaminer, refreshStudents, supervisors: apiSups, supervisorById: apiSupById } = useAppContext();
-  const supList = apiSups.length > 0 ? apiSups : SUPERVISORS;
-  const supMap = apiSups.length > 0 ? apiSupById : supById;
+  const supList = apiSups;
+  const supMap = apiSupById;
   const [scheduling, setScheduling] = useState<string | null>(null);
   const [assigned, setAssigned] = useState<{ [stuId: string]: string }>({});
 

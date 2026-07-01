@@ -77,6 +77,27 @@ public class EmailService {
         notificationLogRepository.save(entry);
     }
 
+    /** Sends an OTP directly to an email address. Throws if the mail server rejects it. */
+    public void sendOtp(String toEmail, String otp) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(fromAddress);
+        message.setTo(toEmail);
+        message.setSubject("[FYP] Your password reset code");
+        message.setText(
+                "Your password reset code is:\n\n  " + otp + "\n\n"
+                + "This code expires in 15 minutes.\n"
+                + "If you did not request a password reset, please ignore this email.\n\n"
+                + "AUCA FYP Office"
+        );
+        try {
+            mailSender.send(message);
+            log.info("OTP email sent to {}", toEmail);
+        } catch (Exception e) {
+            log.error("OTP email to {} failed: {}", toEmail, e.getMessage());
+            throw new RuntimeException("Failed to send reset code. Please contact the administrator.");
+        }
+    }
+
     // ── Template helpers ─────────────────────────────────────────────────────
 
     public void notifyStateTransition(User recipient, Student student, String newState, String extraNote) {

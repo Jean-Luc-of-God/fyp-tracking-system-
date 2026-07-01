@@ -31,6 +31,7 @@ public class StudentResponse {
     private boolean flagged;
     private String note;
     private String letterRejectionReason;
+    private String letterFileName;
 
     public static StudentResponse from(Student s) {
         return StudentResponse.builder()
@@ -55,6 +56,7 @@ public class StudentResponse {
                 .flagged(s.isFlagged())
                 .note(s.getNote())
                 .letterRejectionReason(s.getLetterRejectionReason())
+                .letterFileName(s.getLetterFileName())
                 .build();
     }
 }

@@ -51,7 +51,6 @@ import { EscalationLadder } from './components/Escalation';
 import { StaffAvailabilityDirectory } from './components/AvailabilityUI';
 import { EmptyState } from './components/SharedUI';
 import { ToastHost, notify } from './components/LetterUI';
-import { ResolveComplaintFlow } from './components/Emails';
 import { ConnectionBanner, ErrorBoundary, PageSkeletonFor } from './components/StateSystem';
 import { NotificationsPage } from './components/Notifications';
 
@@ -86,11 +85,10 @@ function MainApp() {
   const { login: apiLogin, logout: apiLogout } = useAuth();
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState<'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin'>("facilitator");
-  const [activeUserId, setActiveUserId] = useState<string>('');
+  const [, setActiveUserId] = useState<string>('');
   const [activeUserFullName, setActiveUserFullName] = useState<string>('');
   const [page, setPage] = useState("pipeline");
   const [focusStudentId, setFocusStudentId] = useState<string | null>(null);
-  const [showFlow, setShowFlow] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const firstPage = (r: 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin') => NAV[r][0].id;
@@ -142,16 +140,6 @@ function MainApp() {
   function open(p: string, studentId?: string) {
     setPage(p);
     setFocusStudentId(studentId || null);
-  }
-
-  function jump(r: string, p: string, studentId?: string) {
-    const typedRole = r as 'student' | 'supervisor' | 'facilitator' | 'hod' | 'superadmin';
-    switchUser(typedRole, activeUserId);
-    setRole(typedRole);
-    setPage(p);
-    setFocusStudentId(studentId || null);
-    setAuthed(true);
-    setShowFlow(false);
   }
 
   function goto(p: string, studentId?: string) {
@@ -252,7 +240,7 @@ function MainApp() {
       }
     }
 
-    return <EmptyState icon="layers" title="Coming soon" sub="This screen isn't part of the current prototype scope yet." />;
+    return <EmptyState icon="layers" title="Not available" sub="This view is not available for your role." />;
   };
 
   return (
@@ -264,7 +252,6 @@ function MainApp() {
         onNav={nav}
         onGoto={goto}
         breadcrumb={isNotifs ? "Notifications" : (navItem ? navItem.label : "")}
-        onResolveDemo={() => setShowFlow(true)}
         onLogout={async () => { await apiLogout(); setAuthed(false); }}
         userFullName={activeUserFullName}
       >
@@ -276,7 +263,6 @@ function MainApp() {
           )}
         </ErrorBoundary>
       </AppShell>
-      {showFlow && <ResolveComplaintFlow onClose={() => setShowFlow(false)} onJump={jump} />}
       <ToastHost />
     </>
   );

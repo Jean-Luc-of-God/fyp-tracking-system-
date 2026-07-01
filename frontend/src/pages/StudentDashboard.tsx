@@ -253,12 +253,14 @@ export const StudentCase: React.FC = () => {
   const [org, setOrg] = useState('');
   const [group, setGroup] = useState('');
   const [detailsSaved, setDetailsSaved] = useState(false);
+  const [letterFile, setLetterFile] = useState<File | null>(null);
 
   React.useEffect(() => {
     if (stu) {
       setTopic(stu.topic || '');
       setOrg(stu.org || '');
       setGroup(stu.group || '');
+      setDetailsSaved(!!(stu.topic && stu.org));
     }
   }, [stu?.id]);
 
@@ -280,7 +282,9 @@ export const StudentCase: React.FC = () => {
   async function handleSubmitLetter() {
     setSubmitting(true);
     try {
-      await studentsApi.submitCaseLetter();
+      // Always save details before submitting so the backend has the latest values
+      await studentsApi.updateMyDetails({ projectTopic: topic, organisation: org, groupLabel: group });
+      await studentsApi.submitCaseLetter(letterFile || undefined);
       notify('Case study letter submitted — awaiting HOD review', 'success');
       reload();
     } catch (e) {
@@ -362,6 +366,7 @@ export const StudentCase: React.FC = () => {
               ['Project topic', stu.topic || '—'],
               ['Organisation', stu.org || '—'],
               ['Group', stu.group || '—'],
+              ['Uploaded letter', (stu as any).letterFileName || '—'],
             ].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 13 }}>
                 <span className="muted">{k}</span>
@@ -380,16 +385,33 @@ export const StudentCase: React.FC = () => {
         )}
 
         {stateIndex === 0 && (
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 16, display: 'grid', gap: 12 }}>
+            <div>
+              <label className="field-label">
+                Upload letter from organisation <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>(PDF, Word, or image)</span>
+              </label>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={e => setLetterFile(e.target.files?.[0] || null)}
+                style={{ display: 'block', marginTop: 6, fontSize: 13 }}
+              />
+              {letterFile && (
+                <div style={{ marginTop: 6, fontSize: 12, color: 'var(--green)' }}>
+                  ✓ {letterFile.name}
+                </div>
+              )}
+            </div>
             {!canSubmit && (
-              <p style={{ fontSize: 12.5, color: 'var(--amber-deep)', marginBottom: 10 }}>
-                Save your project topic and organisation above before submitting.
+              <p style={{ fontSize: 12.5, color: 'var(--amber-deep)', margin: 0 }}>
+                Fill in your project topic and organisation above before submitting.
               </p>
             )}
             <button
               className="btn btn-primary"
               onClick={handleSubmitLetter}
               disabled={submitting || !canSubmit}
+              style={{ justifySelf: 'start' }}
             >
               <Icon name="send" size={15} />
               {submitting ? 'Submitting…' : stu.letterRejectionReason ? 'Resubmit Case Study Letter' : 'Submit Case Study Letter'}

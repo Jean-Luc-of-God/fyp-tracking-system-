@@ -12,8 +12,6 @@ import { EmailPreview } from '../components/Emails';
 import {
   fmt,
   fmtFull,
-  SUPERVISORS,
-  supById,
   TEMPLATES
 } from '../utils/fypData';
 import { usersApi } from '../api/users';
@@ -37,7 +35,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNav }) => {
       </SectionTitle>
       
       <div className="resp-cols-4" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 18 }}>
-        <MetricCard label="Active accounts" value={students.length + SUPERVISORS.length + 3} sub="students + staff" icon="users" tone="navy" />
+        <MetricCard label="Active accounts" value={students.length} sub="students registered" icon="users" tone="navy" />
         <MetricCard label="Emails sent (log)" value={notificationLogs.length} sub={failed + " failed → retried"} icon="mail" tone={failed ? "amber" : "green"} onClick={() => onNav("notifications")} />
         <MetricCard label="Audit events" value={auditLogs.length} sub="this term" icon="shield" tone="blue" onClick={() => onNav("audit")} />
         <MetricCard label="Prototype API" value="Stub" sub="not yet connected" icon="external" tone="red" onClick={() => onNav("config")} />
@@ -477,7 +475,7 @@ export const AdminNotifications: React.FC = () => {
             <EmailPreview 
               templateKey={open.template} 
               student={students.find(s => s.id === open.studentId)} 
-              supervisor={students.find(s => s.id === open.studentId)?.supervisorId ? supById[students.find(s => s.id === open.studentId)!.supervisorId!] : undefined} 
+              supervisor={undefined}
               status={open.status} 
               to={open.to} 
               toName={open.toName} 
@@ -495,6 +493,8 @@ export const AdminNotifications: React.FC = () => {
 /* ---------------- AdminConfig ---------------- */
 export const AdminConfig: React.FC = () => {
   const [retention, setRetention] = useState(true);
+  const { supervisors: apiSups } = useAppContext();
+  const eligibleExaminers = apiSups.filter(s => s.examiner);
 
   return (
     <div>
@@ -564,10 +564,13 @@ export const AdminConfig: React.FC = () => {
           <div className="card">
             <div className="card-hd">
               <h3>Eligible examiners</h3>
-              <Badge tone="violet">{SUPERVISORS.filter(s => s.examiner).length}</Badge>
+              <Badge tone="violet">{eligibleExaminers.length}</Badge>
             </div>
             <div className="card-pad" style={{ display: "grid", gap: 8 }}>
-              {SUPERVISORS.filter(s => s.examiner).map(s => (
+              {eligibleExaminers.length === 0 && (
+                <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>No examiners created yet. Create users with the EXAMINER role.</div>
+              )}
+              {eligibleExaminers.map(s => (
                 <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", border: "1px solid var(--line)", borderRadius: 9 }}>
                   <Avatar name={s.name} role="Examiner" size={28} />
                   <div style={{ flex: 1 }}>

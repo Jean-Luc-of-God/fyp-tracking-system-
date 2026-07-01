@@ -266,6 +266,7 @@ export function buildMockStudents(): Student[] {
       bookRegisteredTs: opts.bookRegisteredTs || bookRegTs(seedVal, stateIndex),
       note: opts.note || null,
       letterRejectionReason: opts.letterRejectionReason || null,
+      letterFileName: null,
     };
     idx++;
     return s;

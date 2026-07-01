@@ -58,6 +58,7 @@ export function mapStudent(s: StudentResponse): Student {
     bookRegisteredTs,
     note: s.note,
     letterRejectionReason: s.letterRejectionReason ?? null,
+    letterFileName: s.letterFileName ?? null,
   };
 }
 

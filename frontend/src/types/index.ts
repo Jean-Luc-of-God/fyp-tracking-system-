@@ -123,6 +123,7 @@ export interface Student {
   bookRegisteredTs: string;
   note: string | null;
   letterRejectionReason: string | null;
+  letterFileName: string | null;
 }
 
 export interface NotificationLog {

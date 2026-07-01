@@ -16,6 +16,9 @@ import rw.aauca.fyp.repository.StudentRepository;
 import rw.aauca.fyp.repository.UserRepository;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -107,6 +110,18 @@ public class StudentService {
         Student student = getById(studentId);
         stateService.transition(student, StudentState.WITHDRAWN, actor, note);
         return studentRepository.save(student);
+    }
+
+    @Transactional
+    public void saveLetterFile(Student student, MultipartFile file) throws IOException {
+        Path uploadDir = Paths.get("uploads/case-letters/" + student.getId());
+        Files.createDirectories(uploadDir);
+        String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "letter";
+        String safeName = originalName.replaceAll("[^a-zA-Z0-9._-]", "_");
+        Path dest = uploadDir.resolve(safeName);
+        file.transferTo(dest);
+        student.setLetterFileName(safeName);
+        studentRepository.save(student);
     }
 
     /**

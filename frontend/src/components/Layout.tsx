@@ -141,7 +141,6 @@ interface AppShellProps {
   onNav: (page: string) => void;
   breadcrumb?: string;
   children: React.ReactNode;
-  onResolveDemo?: () => void;
   onGoto: (page: string) => void;
   onLogout?: () => void;
   userFullName?: string;
@@ -153,7 +152,6 @@ export const AppShell: React.FC<AppShellProps> = ({
   onNav,
   breadcrumb,
   children,
-  onResolveDemo,
   onGoto,
   onLogout,
   userFullName
@@ -224,11 +222,6 @@ export const AppShell: React.FC<AppShellProps> = ({
         </nav>
         
         <div style={{ padding: 12, borderTop: "1px solid rgba(255,255,255,.08)", display: "flex", flexDirection: "column", gap: 8 }}>
-          {onResolveDemo && (
-            <button onClick={onResolveDemo} className="btn" style={{ width: "100%", background: "rgba(246,198,103,.14)", color: "var(--amber)", border: "1px solid rgba(246,198,103,.3)", fontSize: 12.5, height: 38 }}>
-              <Icon name="sparkle" size={15} /> Guided: Resolve a complaint
-            </button>
-          )}
           {onLogout && (
             <button onClick={onLogout} className="btn btn-ghost" style={{ width: "100%", color: "var(--on-navy-dim)", fontSize: 12.5, height: 38 }}>
               <Icon name="logout" size={15} /> Sign out
@@ -283,13 +276,19 @@ interface LoginLauncherProps {
 }
 
 export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onLogin }) => {
-  const [forgot, setForgot] = useState(false);
+  // step: 'login' | 'request-otp' | 'enter-otp'
+  const [step, setStep] = useState<'login' | 'request-otp' | 'enter-otp'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim() || !password.trim()) { setErr('Email and password are required.'); return; }
     setErr(null);
@@ -297,6 +296,58 @@ export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onLogin }) => {
     const role = await onLogin(email.trim(), password);
     setSubmitting(false);
     if (!role) setErr('Invalid email or password. Please try again.');
+  }
+
+  async function handleRequestOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!otpEmail.trim()) { setErr('Please enter your email address.'); return; }
+    setErr(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: otpEmail.trim().toLowerCase() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.message || 'Failed to send code.'); setSubmitting(false); return; }
+      setInfo('A 6-digit reset code has been sent to your email. Check your inbox.');
+      setStep('enter-otp');
+    } catch {
+      setErr('Network error. Please try again.');
+    }
+    setSubmitting(false);
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!otp.trim()) { setErr('Please enter the reset code from your email.'); return; }
+    if (newPassword.length < 8) { setErr('Password must be at least 8 characters.'); return; }
+    if (newPassword !== confirmPassword) { setErr('Passwords do not match.'); return; }
+    setErr(null);
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: otpEmail.trim().toLowerCase(), otp: otp.trim(), newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.message || 'Reset failed.'); setSubmitting(false); return; }
+      setStep('login');
+      setOtp(''); setNewPassword(''); setConfirmPassword('');
+      setInfo('Password reset successfully. You can now sign in.');
+    } catch {
+      setErr('Network error. Please try again.');
+    }
+    setSubmitting(false);
+  }
+
+  function goBackToLogin() {
+    setStep('login');
+    setErr(null);
+    setInfo(null);
+    setOtp(''); setNewPassword(''); setConfirmPassword('');
   }
 
   return (
@@ -317,12 +368,12 @@ export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onLogin }) => {
         </div>
 
         <div style={{ position: "relative", maxWidth: 440 }}>
-<h1 style={{ color: "#fff", fontSize: 34, lineHeight: 1.15, letterSpacing: "-.02em", fontWeight: 600 }}>Final Year Project<br />Tracking & Accountability</h1>
+          <h1 style={{ color: "#fff", fontSize: 34, lineHeight: 1.15, letterSpacing: "-.02em", fontWeight: 600 }}>Final Year Project<br />Tracking & Accountability</h1>
           <p style={{ color: "var(--on-navy-dim)", fontSize: 15, marginTop: 16, lineHeight: 1.6 }}>
             One continuous, auditable timeline of every step a student passes through — who did what, and when — from registration to defense. No more guessing. No more blame by assumption.
           </p>
           <div className="role-stat-row" style={{ display: "flex", gap: 22, marginTop: 30 }}>
-            {[["11", "tracked states"], ["5", "role views"], ["100%", "email receipts"]].map(([n, l]) => (
+            {[["13", "tracked states"], ["6", "role views"], ["100%", "email receipts"]].map(([n, l]) => (
               <div key={l}>
                 <div className="num" style={{ fontSize: 26, fontWeight: 600, color: "var(--amber)" }}>{n}</div>
                 <div style={{ fontSize: 12, color: "var(--on-navy-dim)" }}>{l}</div>
@@ -330,41 +381,36 @@ export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onLogin }) => {
             ))}
           </div>
         </div>
-        
+
         <div style={{ position: "relative", fontSize: 11.5, color: "rgba(255,255,255,.4)" }}>
-          Prototype · email, WhatsApp &amp; prototype-review API are mocked for demo
+          © {new Date().getFullYear()} AUCA · Department of Software Engineering
         </div>
       </div>
 
       {/* right sign-in */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
         <div style={{ width: "100%", maxWidth: 380 }}>
-          {forgot ? (
-            <>
-              <h2 style={{ fontSize: 22 }}>Forgot password</h2>
-              <p className="muted" style={{ fontSize: 13.5, marginTop: 6, marginBottom: 20 }}>
-                Password resets are handled by the Superadmin. Contact them directly and your password will be reset via the admin panel.
-              </p>
-              <div style={{ marginTop: 14, padding: "10px 12px", background: "var(--blue-bg)", borderRadius: 8, fontSize: 12, color: "var(--ink-2)", display: "flex", gap: 8 }}>
-                <Icon name="shield" size={15} style={{ color: "var(--blue)", flex: "none", marginTop: 1 }} />
-                The Superadmin will reset your password and the action will be recorded in the audit log.
-              </div>
-              <button onClick={() => setForgot(false)} className="btn btn-quiet" style={{ marginTop: 14, width: "100%", fontSize: 12.5 }}>← Back to sign in</button>
-            </>
-          ) : (
+
+          {info && (
+            <div style={{ marginBottom: 16, padding: "10px 12px", background: "var(--green-bg, #f0fdf4)", borderRadius: 8, fontSize: 12.5, color: "var(--green)", display: "flex", gap: 8 }}>
+              <Icon name="check" size={14} style={{ flex: "none", marginTop: 1 }} /> {info}
+            </div>
+          )}
+
+          {step === 'login' && (
             <>
               <h2 style={{ fontSize: 22 }}>Sign in</h2>
               <p className="muted" style={{ fontSize: 13.5, marginTop: 6, marginBottom: 22 }}>
                 Sign in with your AUCA email and password.
               </p>
-              <form onSubmit={handleSubmit} noValidate>
+              <form onSubmit={handleLogin} noValidate>
                 <label className="field-label">University email</label>
                 <input
                   className="input"
                   type="email"
                   placeholder="you@aauca.ac.rw"
                   value={email}
-                  onChange={e => { setEmail(e.target.value); setErr(null); }}
+                  onChange={e => { setEmail(e.target.value); setErr(null); setInfo(null); }}
                   style={{ marginBottom: 14 }}
                   autoFocus
                   disabled={submitting}
@@ -384,22 +430,103 @@ export const LoginLauncher: React.FC<LoginLauncherProps> = ({ onLogin }) => {
                     <Icon name="alert" size={13} /> {err}
                   </div>
                 )}
-                <button
-                  type="submit"
-                  className="btn btn-primary btn-lg"
-                  style={{ width: "100%" }}
-                  disabled={submitting}
-                >
-                  {submitting
-                    ? <><Icon name="refresh" size={15} /> Signing in…</>
-                    : <><Icon name="arrowRight" size={15} /> Sign in</>}
+                <button type="submit" className="btn btn-primary btn-lg" style={{ width: "100%" }} disabled={submitting}>
+                  {submitting ? <><Icon name="refresh" size={15} /> Signing in…</> : <><Icon name="arrowRight" size={15} /> Sign in</>}
                 </button>
               </form>
-              <button onClick={() => setForgot(true)} className="btn btn-quiet" style={{ marginTop: 10, width: "100%", color: "var(--ink-3)", fontSize: 12.5 }}>
+              <button onClick={() => { setStep('request-otp'); setErr(null); setInfo(null); }} className="btn btn-quiet" style={{ marginTop: 10, width: "100%", color: "var(--ink-3)", fontSize: 12.5 }}>
                 Forgot password?
               </button>
             </>
           )}
+
+          {step === 'request-otp' && (
+            <>
+              <h2 style={{ fontSize: 22 }}>Reset password</h2>
+              <p className="muted" style={{ fontSize: 13.5, marginTop: 6, marginBottom: 22 }}>
+                Enter your university email and we will send you a 6-digit code.
+              </p>
+              <form onSubmit={handleRequestOtp} noValidate>
+                <label className="field-label">University email</label>
+                <input
+                  className="input"
+                  type="email"
+                  placeholder="you@aauca.ac.rw"
+                  value={otpEmail}
+                  onChange={e => { setOtpEmail(e.target.value); setErr(null); }}
+                  style={{ marginBottom: err ? 8 : 18 }}
+                  autoFocus
+                  disabled={submitting}
+                />
+                {err && (
+                  <div style={{ fontSize: 12, color: "var(--red)", marginBottom: 12, display: "flex", alignItems: "center", gap: 5 }}>
+                    <Icon name="alert" size={13} /> {err}
+                  </div>
+                )}
+                <button type="submit" className="btn btn-primary btn-lg" style={{ width: "100%" }} disabled={submitting}>
+                  {submitting ? <><Icon name="refresh" size={15} /> Sending code…</> : <><Icon name="arrowRight" size={15} /> Send reset code</>}
+                </button>
+              </form>
+              <button onClick={goBackToLogin} className="btn btn-quiet" style={{ marginTop: 10, width: "100%", fontSize: 12.5 }}>← Back to sign in</button>
+            </>
+          )}
+
+          {step === 'enter-otp' && (
+            <>
+              <h2 style={{ fontSize: 22 }}>Enter reset code</h2>
+              <p className="muted" style={{ fontSize: 13.5, marginTop: 6, marginBottom: 22 }}>
+                Check your email at <strong>{otpEmail}</strong> for the 6-digit code.
+              </p>
+              <form onSubmit={handleResetPassword} noValidate>
+                <label className="field-label">6-digit code</label>
+                <input
+                  className="input"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="000000"
+                  maxLength={6}
+                  value={otp}
+                  onChange={e => { setOtp(e.target.value.replace(/\D/g, '')); setErr(null); }}
+                  style={{ marginBottom: 14, letterSpacing: "0.2em", fontSize: 18, textAlign: "center" }}
+                  autoFocus
+                  disabled={submitting}
+                />
+                <label className="field-label">New password</label>
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="At least 8 characters"
+                  value={newPassword}
+                  onChange={e => { setNewPassword(e.target.value); setErr(null); }}
+                  style={{ marginBottom: 14 }}
+                  disabled={submitting}
+                />
+                <label className="field-label">Confirm new password</label>
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="Repeat password"
+                  value={confirmPassword}
+                  onChange={e => { setConfirmPassword(e.target.value); setErr(null); }}
+                  style={{ marginBottom: err ? 8 : 18 }}
+                  disabled={submitting}
+                />
+                {err && (
+                  <div style={{ fontSize: 12, color: "var(--red)", marginBottom: 12, display: "flex", alignItems: "center", gap: 5 }}>
+                    <Icon name="alert" size={13} /> {err}
+                  </div>
+                )}
+                <button type="submit" className="btn btn-primary btn-lg" style={{ width: "100%" }} disabled={submitting}>
+                  {submitting ? <><Icon name="refresh" size={15} /> Resetting…</> : <><Icon name="check" size={15} /> Reset password</>}
+                </button>
+              </form>
+              <button onClick={() => { setStep('request-otp'); setErr(null); setInfo(null); }} className="btn btn-quiet" style={{ marginTop: 10, width: "100%", fontSize: 12.5 }}>
+                Resend code
+              </button>
+              <button onClick={goBackToLogin} className="btn btn-quiet" style={{ marginTop: 4, width: "100%", fontSize: 12.5 }}>← Back to sign in</button>
+            </>
+          )}
+
         </div>
       </div>
     </div>

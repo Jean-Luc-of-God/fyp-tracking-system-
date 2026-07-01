@@ -19,21 +19,50 @@ This file is the single source of truth for Claude Code. Read the entire file be
 
 ### App Status: FULLY BUILT & TESTED ✅
 
-The entire application — backend, frontend, tests — is complete and working. **45 tests pass** (7 integration + 23 unit state machine + 15 unit proposal). The backend is currently running locally on `http://localhost:9191`. Login with `admin@aauca.ac.rw` / `Admin@1234`.
+The entire application — backend, frontend, tests — is complete and working. **45 tests pass** (7 integration + 23 unit state machine + 15 unit proposal). Login with `admin@aauca.ac.rw` / `Admin@1234`.
 
-### Thesis Status: Chapters 1–5 Written ✅
+### Database: Docker (not local PostgreSQL)
 
-The thesis report for this project has been written and compiled. The latest compiled file is:
-- **`/home/manishimwe-kwizera-jean-luc/Downloads/FYP_Report_Chapters15_FORMATTED.docx`** — Chapters 1–5 complete
-- **`/home/manishimwe-kwizera-jean-luc/Downloads/FYP_Report_Chapters15_FORMATTED.pdf`** — PDF version
-- Source markdown: `chapter-01.md`, `chapter-02.md`, `chapter-03.md` (in project root), `chapter-05.md` (in project root)
-- Chapter 4 was compiled into `FYP_Report_Chapters14_FORMATTED.docx` in Downloads and then Chapter 5 was appended
+PostgreSQL and Redis both run as Docker containers defined in `docker-compose.yml`. The local PostgreSQL 18 installation has a pg_hba.conf permission issue — do NOT use it. Always use Docker.
+
+**To start everything from scratch:**
+```bash
+# 1. Start database and Redis
+cd /home/manishimwe-kwizera-jean-luc/fyp-tracking-system-
+docker compose up -d
+
+# 2. Start backend
+cd backend
+export $(grep -v '^#' ../.env | xargs)
+/opt/idea-IU-261.25134.95/plugins/maven/lib/maven3/bin/mvn spring-boot:run > /tmp/backend.log 2>&1 &
+
+# 3. Start frontend
+cd ../frontend
+npm run dev > /tmp/frontend.log 2>&1 &
+```
+
+The Docker volume `fyp-tracking-system-_postgres_data` is persistent — data survives restarts. Only `docker compose down -v` deletes it (never do this unless intentional).
+
+### Thesis Status: NEARLY COMPLETE ✅
+
+Latest compiled file: **`/home/manishimwe-kwizera-jean-luc/Downloads/FYP_Report_FINAL.odt`**
+
+| Section | Status |
+|---|---|
+| Chapter 1 — General Introduction | ✅ Done |
+| Chapter 2 — Analysis of Existing System | ✅ Done |
+| Chapter 3 — Requirements Analysis & Design | ✅ Done |
+| Chapter 4 — Implementation | ✅ Done |
+| Chapter 5 — Conclusion & Recommendations | ✅ Done |
+| References / Bibliography | ✅ Written — see `references.md` in project root |
+| Appendices | ✅ Added into FYP_Report_FINAL.odt |
+| Figures 1–9 (UML/architecture diagrams) | ✅ Embedded |
+| Figures 10–17 (UI screenshots) | ❌ Still needed — take from live app at localhost:5173 |
 
 ### What Is Still Left To Do
 
-1. **Thesis diagrams** — Jean-Luc is generating HD diagrams at claude.ai/design using prompts from `/home/manishimwe-kwizera-jean-luc/Desktop/diagram-prompts.txt`. There are 9 UML/architecture diagrams (Figures 1–9) and 8 UI screenshots (Figures 10–17) that need to replace the `[Figure placeholder — ...]` text in the Word document. The diagrams need to be A4-sized (794×1123px portrait). When inserting diagrams into the docx, use python-docx.
-2. **References / Bibliography** — not yet written. Will be added as a final section.
-3. **Deployment** — app is ready to deploy. `render.yaml` is in the repo root. Plan: Render (backend) + Supabase (PostgreSQL) + Upstash (Redis) + Vercel (frontend). The user has not yet created accounts on these services.
+1. **UI Screenshots (Figures 10–17)** — take browser screenshots of the live app (login, dashboards, student import, panels, supervision, notifications) and insert into the ODT.
+2. **Deployment** — app is ready to deploy. `render.yaml` is in the repo root. Plan: Render (backend) + Supabase (PostgreSQL) + Upstash (Redis) + Vercel (frontend). Accounts not yet created.
 
 ---
 
@@ -82,8 +111,8 @@ export $(grep -v '^#' ../.env | xargs)
 |---|---|
 | Backend | Spring Boot 3.2.5, Java 17 |
 | ORM | Spring Data JPA + Hibernate |
-| Database | PostgreSQL 16 (local: fyp_tracker, user: fyp_user) |
-| Migrations | Flyway — V1 through V5 applied |
+| Database | PostgreSQL 16 — Docker container `fyp_postgres` (fyp_tracker / fyp_user / fyp_pass) |
+| Migrations | Flyway — V1 through V6 applied |
 | Cache / Blacklist | Redis 7 |
 | Auth | Spring Security + JWT (jjwt **0.12.6**), BCrypt cost 12 |
 | Rate limiting | Bucket4j 8.10.1 — 5 login attempts / IP / 15 min |
@@ -142,8 +171,9 @@ Located at `backend/src/main/resources/db/migration/`
 | V3__add_proposal_locked.sql | Adds proposal_locked column | Applied |
 | V4__add_letter_rejection_reason.sql | Adds rejection reason to case letters | Applied |
 | V5__reset_superadmin_password.sql | Resets admin password via ON CONFLICT DO UPDATE | Applied |
+| V6__add_letter_file_name.sql | Adds letter_file_name column to students table | Applied |
 
-**Never edit an applied migration. Add V6__ for new changes.**
+**Never edit an applied migration. Add V7__ for new changes.**
 
 ---
 
@@ -228,43 +258,38 @@ The backend reads `PORT` env var for the port (Railway/Render inject this). Redi
 ## Thesis Book — Full Status
 
 ### Files
+- Compiled thesis: `/home/manishimwe-kwizera-jean-luc/Downloads/FYP_Report_FINAL.odt` — all chapters + appendix
 - Source chapters: `chapter-01.md`, `chapter-02.md`, `chapter-03.md`, `chapter-05.md` in project root
-- Compiled book: `/home/manishimwe-kwizera-jean-luc/Downloads/FYP_Report_Chapters15_FORMATTED.docx`
-- Template used: `Shema Hugues-25603 (1) (1).docx` (AUCA Faculty of IT format, in project root)
-- To rebuild PDF: `soffice --headless -env:UserInstallation=file:///tmp/lo-profile --convert-to pdf <file.docx> --outdir <dir>`
+- References: `references.md` in project root (real books + websites, APA format)
+- Build script: `build_thesis.py` in project root
+- Template: `Shema Hugues-25603 (1) (1).docx` (AUCA Faculty of IT format, in project root)
 - LibreOffice is installed. Microsoft Word is NOT.
 
-### Chapter Status
-| Chapter | Title | Status |
-|---|---|---|
-| 1 | General Introduction | ✅ Written & compiled |
-| 2 | Analysis of Existing System | ✅ Written & compiled |
-| 3 | Requirements Analysis & Design | ✅ Written & compiled |
-| 4 | Implementation | ✅ Written & compiled |
-| 5 | Conclusion & Recommendations | ✅ Written & compiled |
-| References | Bibliography | ❌ Not yet written |
-| Appendices | API list, test results | ❌ Not yet written |
+### Chapter & Section Status
+| Section | Status |
+|---|---|
+| Chapter 1 — General Introduction | ✅ Done |
+| Chapter 2 — Analysis of Existing System | ✅ Done |
+| Chapter 3 — Requirements Analysis & Design | ✅ Done |
+| Chapter 4 — Implementation | ✅ Done |
+| Chapter 5 — Conclusion & Recommendations | ✅ Done |
+| References / Bibliography | ✅ Done (`references.md`) |
+| Appendices | ✅ Added into FYP_Report_FINAL.odt |
+| Figures 1–9 (UML/architecture diagrams) | ✅ Embedded |
+| Figures 10–17 (UI screenshots) | ❌ Still needed |
 
-### Diagrams (Figures 1–17) — IN PROGRESS
-Jean-Luc is generating diagrams at claude.ai/design using prompts from:
-`/home/manishimwe-kwizera-jean-luc/Desktop/diagram-prompts.txt`
+### Figures 10–17 (UI screenshots still needed)
+Take browser screenshots of the live app at `http://localhost:5173` (login: admin@aauca.ac.rw / Admin@1234):
+- Figure 10: Login page
+- Figure 11: Superadmin dashboard / system overview
+- Figure 12: User management (create user form)
+- Figure 13: Student import (Excel upload)
+- Figure 14: Student profile / timeline
+- Figure 15: Supervision slots and meetings
+- Figure 16: Panel / examiner assignment
+- Figure 17: Notification logs
 
-**Key rule**: diagrams must be A4 portrait size (794×1123px at 96dpi) to fit in the thesis.
-
-| Figure | Description | Status |
-|---|---|---|
-| 1 | Current system flowchart | Generating |
-| 2 | Use case diagram | Generating |
-| 3 | Class diagram | Generating |
-| 4 | Login sequence diagram | Generating |
-| 5 | State transition sequence diagram | Generating |
-| 6 | Login activity diagram | Generating |
-| 7 | Student journey activity diagram | Generating |
-| 8 | Database schema (ER diagram) | Generating |
-| 9 | System architecture diagram | Generating |
-| 10–17 | UI screenshots from live app | Need browser screenshots |
-
-For screenshots (Figures 10–17): app is live at `http://localhost:5173`. Login: admin@aauca.ac.rw / Admin@1234.
+Save as `figures/Figure 10.png` through `figures/Figure 17.png`, then rerun `python3 build_thesis.py`.
 
 ---
 
@@ -276,6 +301,10 @@ For screenshots (Figures 10–17): app is live at `http://localhost:5173`. Login
 - Proposal service: Hibernate FlushMode.AUTO flushes the dirty `attempt` before `countByStudentIdAndStatus` runs — count already includes current rejection, no `+1` needed. This was a production bug that was found and fixed.
 - jjwt 0.12.6 API: use `verifyWith(key)`, `parseSignedClaims(token).getPayload()`, builder uses `id/subject/issuedAt/expiration` (not `setId/setSubject`)
 - Testcontainers abandoned (Docker API version incompatibility) — integration tests use dev PostgreSQL with `@Transactional` rollback
+- `LazyInitializationException` on `GET /api/students/me` — fixed 2026-07-01 by adding `@EntityGraph(attributePaths = {"user", "supervisor"})` to ALL `StudentRepository` query methods. Without this, accessing `student.getUser()` outside a transaction throws an exception.
+- Student case letter submit returned 500 — fixed 2026-07-01: frontend now always calls `updateMyDetails` before `submitCaseLetter` so the backend always has the project topic and organisation saved.
+- Frontend was showing mock data (fake supervisors, 40 fake students) — fixed 2026-07-01: removed `buildMockStudents()` from AppContext initial state, bumped localStorage key from v1 to v2 to clear old cache.
+- Case letter file upload added 2026-07-01: `POST /api/students/me/submit-case-letter` now accepts optional `MultipartFile file`. Files saved to `uploads/case-letters/{studentId}/`. HOD downloads via `GET /api/students/{id}/letter-file`.
 
 ---
 

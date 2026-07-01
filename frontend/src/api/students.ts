@@ -16,8 +16,14 @@ export const studentsApi = {
   transition: (studentId: string, toState: string, note?: string) =>
     api.post<StudentResponse>(`/api/students/${studentId}/transition`, { state: toState, note }),
 
-  submitCaseLetter: () =>
-    api.post<StudentResponse>('/api/students/me/submit-case-letter'),
+  submitCaseLetter: (file?: File) => {
+    if (file) {
+      const form = new FormData();
+      form.append('file', file);
+      return api.postForm<StudentResponse>('/api/students/me/submit-case-letter', form);
+    }
+    return api.post<StudentResponse>('/api/students/me/submit-case-letter');
+  },
 
   createStudent: (data: {
     fullName: string; email: string; regNumber: string;
