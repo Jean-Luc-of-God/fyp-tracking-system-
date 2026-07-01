@@ -38,8 +38,8 @@ public class PanelService {
         User examiner = userRepository.findById(examinerId)
                 .orElseThrow(() -> new RuntimeException("Examiner not found: " + examinerId));
 
-        if (examiner.getRole() != Role.EXAMINER) {
-            throw new IllegalArgumentException("User " + examiner.getFullName() + " does not have the EXAMINER role");
+        if (!examiner.isEligibleExaminer()) {
+            throw new IllegalArgumentException(examiner.getFullName() + " is not marked as an eligible examiner");
         }
 
         // Examiner cannot be the student's own supervisor
@@ -49,17 +49,29 @@ public class PanelService {
                     "A supervisor cannot be assigned as examiner for their own student");
         }
 
-        // Prevent duplicate assignment (same student + examiner + panel type)
-        if (panelRepository.existsByStudentIdAndExaminerIdAndPanelType(studentId, examinerId, panelType)) {
+        // Prevent a second pending assignment of the same type (re-defense attempts are fine
+        // once the prior attempt's outcome has been recorded)
+        if (panelRepository.existsByStudentIdAndPanelTypeAndOutcomeIsNull(studentId, panelType)) {
             throw new IllegalStateException(
-                    examiner.getFullName() + " is already assigned to this student's " + panelType + " panel");
+                    "A pending " + panelType + " assignment already exists for this student");
         }
+
+        // An examiner cannot examine the same student at both pre-defense and defense —
+        // but the same examiner may re-examine a later defense attempt
+        if (panelRepository.existsByStudentIdAndExaminerIdAndPanelTypeNot(studentId, examinerId, panelType)) {
+            throw new IllegalStateException(
+                    examiner.getFullName() + " already examined this student at a different panel stage "
+                            + "and cannot examine them again");
+        }
+
+        int attemptNumber = panelType == PanelType.DEFENSE ? student.getDefenseAttempts() + 1 : 1;
 
         PanelAssignment assignment = PanelAssignment.builder()
                 .student(student)
                 .examiner(examiner)
                 .panelType(panelType)
                 .scheduledAt(scheduledAt)
+                .attemptNumber(attemptNumber)
                 .assignedBy(actor)
                 .build();
 
@@ -73,13 +85,39 @@ public class PanelService {
     }
 
     @Transactional
+    public PanelAssignment updateSchedule(UUID assignmentId, Instant scheduledAt, User examiner) {
+        PanelAssignment assignment = panelRepository.findById(assignmentId)
+                .orElseThrow(() -> new RuntimeException("Panel assignment not found: " + assignmentId));
+
+        if (!assignment.getExaminer().getId().equals(examiner.getId())) {
+            throw new SecurityException("You can only set the schedule for panels you are assigned to");
+        }
+        if (assignment.getOutcome() != null) {
+            throw new IllegalStateException("Cannot reschedule a panel whose outcome has already been recorded");
+        }
+
+        assignment.setScheduledAt(scheduledAt);
+        PanelAssignment saved = panelRepository.save(assignment);
+
+        auditService.log(examiner, "PANEL_RESCHEDULED", "PanelAssignment", assignmentId,
+                "Scheduled for " + scheduledAt, null);
+        emailService.notifyPanelScheduled(assignment.getStudent().getUser(), assignment.getStudent(),
+                assignment.getPanelType().name(), examiner.getFullName(), scheduledAt.toString());
+
+        return saved;
+    }
+
+    @Transactional
     public PanelAssignment recordOutcome(UUID assignmentId, PanelOutcome outcome, String note, User actor) {
         PanelAssignment assignment = panelRepository.findById(assignmentId)
                 .orElseThrow(() -> new RuntimeException("Panel assignment not found: " + assignmentId));
 
-        // EXAMINER can only record outcomes on their own assignments
-        if (actor.getRole() == Role.EXAMINER &&
-                !assignment.getExaminer().getId().equals(actor.getId())) {
+        // Non-administrative roles (EXAMINER, SUPERVISOR) can only record outcomes on their own
+        // assignments — HOD/FACILITATOR/SUPERADMIN retain administrative override authority.
+        boolean isAdministrative = actor.getRole() == Role.HOD
+                || actor.getRole() == Role.FACILITATOR
+                || actor.getRole() == Role.SUPERADMIN;
+        if (!isAdministrative && !assignment.getExaminer().getId().equals(actor.getId())) {
             throw new SecurityException("You can only record outcomes for panels you are assigned to");
         }
 
@@ -109,6 +147,11 @@ public class PanelService {
                 && outcome == PanelOutcome.PASSED
                 && student.getState() == StudentState.DEFENSE) {
             stateService.transition(student, StudentState.COMPLETED, actor, "Defense passed — recorded by " + actor.getFullName());
+        } else if (assignment.getPanelType() == PanelType.DEFENSE
+                && (outcome == PanelOutcome.REFERRED || outcome == PanelOutcome.FAILED)
+                && student.getState() == StudentState.DEFENSE) {
+            stateService.transition(student, StudentState.DEFENSE, actor,
+                    "Defense outcome: " + outcome + " — re-defense required");
         }
 
         auditService.log(actor, "PANEL_OUTCOME_RECORDED", "PanelAssignment", assignmentId,

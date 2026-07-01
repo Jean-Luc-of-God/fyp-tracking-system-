@@ -8,6 +8,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import rw.aauca.fyp.dto.request.AssignPanelRequest;
 import rw.aauca.fyp.dto.request.RecordPanelOutcomeRequest;
+import rw.aauca.fyp.dto.request.UpdatePanelScheduleRequest;
 import rw.aauca.fyp.dto.response.PanelAssignmentResponse;
 import rw.aauca.fyp.entity.User;
 import rw.aauca.fyp.service.PanelService;
@@ -32,8 +33,17 @@ public class PanelController {
                                 request.getPanelType(), request.getScheduledAt(), actor)));
     }
 
+    @PatchMapping("/{id}/schedule")
+    @PreAuthorize("hasAnyRole('EXAMINER','HOD','SUPERVISOR','FACILITATOR','SUPERADMIN')")
+    public ResponseEntity<PanelAssignmentResponse> updateSchedule(@PathVariable UUID id,
+                                                                   @RequestBody UpdatePanelScheduleRequest request,
+                                                                   @AuthenticationPrincipal User actor) {
+        return ResponseEntity.ok(PanelAssignmentResponse.from(
+                panelService.updateSchedule(id, request.getScheduledAt(), actor)));
+    }
+
     @PatchMapping("/{id}/outcome")
-    @PreAuthorize("hasAnyRole('EXAMINER','HOD','FACILITATOR','SUPERADMIN')")
+    @PreAuthorize("hasAnyRole('EXAMINER','HOD','SUPERVISOR','FACILITATOR','SUPERADMIN')")
     public ResponseEntity<PanelAssignmentResponse> recordOutcome(@PathVariable UUID id,
                                                                   @RequestBody RecordPanelOutcomeRequest request,
                                                                   @AuthenticationPrincipal User actor) {
@@ -62,7 +72,7 @@ public class PanelController {
     }
 
     @GetMapping("/me")
-    @PreAuthorize("hasRole('EXAMINER')")
+    @PreAuthorize("hasAnyRole('EXAMINER','HOD','SUPERVISOR','FACILITATOR','SUPERADMIN')")
     public ResponseEntity<List<PanelAssignmentResponse>> getMyAssignments(@AuthenticationPrincipal User actor) {
         return ResponseEntity.ok(panelService.getMyAssignments(actor.getId())
                 .stream().map(PanelAssignmentResponse::from).toList());

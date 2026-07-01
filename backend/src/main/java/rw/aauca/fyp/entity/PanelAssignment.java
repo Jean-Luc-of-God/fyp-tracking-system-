@@ -32,6 +32,10 @@ public class PanelAssignment {
     @Column(name = "scheduled_at")
     private Instant scheduledAt;
 
+    @Column(name = "attempt_number", nullable = false)
+    @Builder.Default
+    private int attemptNumber = 1;
+
     @Enumerated(EnumType.STRING)
     private PanelOutcome outcome;
 

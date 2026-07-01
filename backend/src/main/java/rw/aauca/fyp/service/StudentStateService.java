@@ -37,7 +37,7 @@ public class StudentStateService {
         Map.entry(StudentState.SUPERVISION,              EnumSet.of(StudentState.BOOK_SUBMITTED)),
         Map.entry(StudentState.BOOK_SUBMITTED,           EnumSet.of(StudentState.PRE_DEFENSE)),
         Map.entry(StudentState.PRE_DEFENSE,              EnumSet.of(StudentState.DEFENSE)),
-        Map.entry(StudentState.DEFENSE,                  EnumSet.of(StudentState.COMPLETED))
+        Map.entry(StudentState.DEFENSE,                  EnumSet.of(StudentState.DEFENSE, StudentState.COMPLETED))
     );
 
     private static final Set<StudentState> TERMINAL = EnumSet.of(StudentState.COMPLETED, StudentState.WITHDRAWN);
@@ -62,6 +62,11 @@ public class StudentStateService {
             student.setProtoAttempts(student.getProtoAttempts() + 1);
         }
 
+        // Track re-defense attempts
+        if (fromState == StudentState.DEFENSE && toState == StudentState.DEFENSE) {
+            student.setDefenseAttempts(student.getDefenseAttempts() + 1);
+        }
+
         student.setState(toState);
         student.setStateEnteredAt(Instant.now());
         studentRepository.save(student);
@@ -78,7 +83,7 @@ public class StudentStateService {
         auditService.log(actor, "STATE_TRANSITION", "Student", student.getId(),
                 fromState + " -> " + toState, null);
 
-        // Notify the student of their new state (skip self-loop in PROTOTYPE_REVIEW)
+        // Notify the student of their new state (skip self-loops, e.g. PROTOTYPE_REVIEW/DEFENSE re-attempts)
         if (student.getUser() != null && fromState != toState) {
             emailService.notifyStateTransition(student.getUser(), student, toState.name(), note);
         }

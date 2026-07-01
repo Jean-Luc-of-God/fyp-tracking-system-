@@ -18,6 +18,7 @@ public class PanelAssignmentResponse {
     private String examinerName;
     private String panelType;
     private Instant scheduledAt;
+    private int attemptNumber;
     private String outcome;
     private String outcomeNote;
     private Instant outcomeRecordedAt;
@@ -35,6 +36,7 @@ public class PanelAssignmentResponse {
                 .examinerName(a.getExaminer().getFullName())
                 .panelType(a.getPanelType().name())
                 .scheduledAt(a.getScheduledAt())
+                .attemptNumber(a.getAttemptNumber())
                 .outcome(a.getOutcome() != null ? a.getOutcome().name() : null)
                 .outcomeNote(a.getOutcomeNote())
                 .outcomeRecordedAt(a.getOutcomeRecordedAt())
