@@ -210,6 +210,34 @@ export const SectionTitle: React.FC<SectionTitleProps> = ({ children, sub, right
   );
 };
 
+/* ---------------- Row Search (filter-in-place for long assignment/review tables) ---------------- */
+interface RowSearchProps {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}
+
+export const RowSearch: React.FC<RowSearchProps> = ({ value, onChange, placeholder = "Search name or reg number…" }) => {
+  return (
+    <div style={{ position: "relative" }}>
+      <Icon name="search" size={16} style={{ position: "absolute", left: 11, top: 11, color: "var(--ink-4)" }} />
+      <input
+        className="input"
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{ width: 240, paddingLeft: 34, height: 38 }}
+      />
+    </div>
+  );
+};
+
+export function matchesSearch(name: string, reg: string | null | undefined, q: string): boolean {
+  if (!q) return true;
+  const needle = q.toLowerCase();
+  return name.toLowerCase().includes(needle) || (reg || "").toLowerCase().includes(needle);
+}
+
 /* ---------------- Skeleton Loader Component ---------------- */
 export const Skeleton: React.FC<{ style?: React.CSSProperties; width?: string | number; height?: string | number }> = ({ style, width, height }) => {
   return <div className="shimmer" style={{ background: "var(--surface-2)", borderRadius: 6, width: width || "100%", height: height || 20, ...style }} />;

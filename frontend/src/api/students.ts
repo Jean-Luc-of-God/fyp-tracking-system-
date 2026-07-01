@@ -51,6 +51,6 @@ export const studentsApi = {
   importExcel: (file: File) => {
     const form = new FormData();
     form.append('file', file);
-    return api.postForm<StudentResponse[]>('/api/students/import', form);
+    return api.postForm<{ imported: number }>('/api/students/import', form);
   },
 };

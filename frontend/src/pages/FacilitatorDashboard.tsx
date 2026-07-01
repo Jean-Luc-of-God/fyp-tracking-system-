@@ -10,7 +10,9 @@ import {
   SectionTitle,
   MetricCard,
   Modal,
-  StateTracker
+  StateTracker,
+  RowSearch,
+  matchesSearch,
 } from '../components/SharedUI';
 import { EmailPreview } from '../components/Emails';
 import { Timeline } from '../components/Timeline';
@@ -582,9 +584,10 @@ export const FacExaminers: React.FC = () => {
   const [selectedExaminer, setSelectedExaminer] = useState<{ [stuId: string]: string }>({});
   const [assigning, setAssigning] = useState<string | null>(null);
   const [panelsByStudent, setPanelsByStudent] = useState<Record<string, PanelAssignmentResponse[]>>({});
+  const [q, setQ] = useState('');
 
   // Step 1: book submitted, waiting to be scheduled for pre-defense
-  const bookSubmitted = students.filter(s => s.stateIndex === 8);
+  const bookSubmitted = students.filter(s => s.stateIndex === 8 && matchesSearch(s.name, s.reg, q));
   // Students who could need a panel assignment right now (pre-defense or defense phase)
   const preDefenseCandidates = students.filter(s => s.stateIndex === 9);
   const defenseCandidates = students.filter(s => s.stateIndex === 10);
@@ -608,9 +611,13 @@ export const FacExaminers: React.FC = () => {
     (panelsByStudent[studentId] || []).some(p => p.panelType === type && !p.outcome);
 
   // Step 2: in pre-defense, waiting for examiner assignment
-  const needExaminer = preDefenseCandidates.filter(s => !hasPendingPanel(s.id, 'PRE_DEFENSE'));
+  const needExaminer = preDefenseCandidates
+    .filter(s => !hasPendingPanel(s.id, 'PRE_DEFENSE'))
+    .filter(s => matchesSearch(s.name, s.reg, q));
   // Step 3: in defense, waiting for examiner assignment
-  const needDefenseExaminer = defenseCandidates.filter(s => !hasPendingPanel(s.id, 'DEFENSE'));
+  const needDefenseExaminer = defenseCandidates
+    .filter(s => !hasPendingPanel(s.id, 'DEFENSE'))
+    .filter(s => matchesSearch(s.name, s.reg, q));
 
   async function handleSchedule(stuId: string) {
     setScheduling(stuId);
@@ -645,7 +652,12 @@ export const FacExaminers: React.FC = () => {
 
   return (
     <div>
-      <SectionTitle sub="Schedule pre-defense, assign a pre-defense examiner, then assign a defense examiner once cleared. A student's own supervisor can never be their examiner.">Assign Examiners</SectionTitle>
+      <SectionTitle
+        sub="Schedule pre-defense, assign a pre-defense examiner, then assign a defense examiner once cleared. A student's own supervisor can never be their examiner."
+        right={<RowSearch value={q} onChange={setQ} />}
+      >
+        Assign Examiners
+      </SectionTitle>
 
       <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 16px", background: "var(--violet-bg)", border: "1px solid #D9CDEC", borderRadius: 10, marginBottom: 22, fontSize: 13 }}>
         <Icon name="scale" size={17} style={{ color: "var(--violet)", flex: "none", marginTop: 1 }} />

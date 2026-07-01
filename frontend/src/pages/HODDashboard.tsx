@@ -7,8 +7,10 @@ import {
   Badge, 
   StateBadge, 
   MetricCard, 
-  SectionTitle, 
-  Modal 
+  SectionTitle,
+  Modal,
+  RowSearch,
+  matchesSearch,
 } from '../components/SharedUI';
 import {
   StudentIdSearch,
@@ -304,7 +306,7 @@ export const HODUpload: React.FC = () => {
     setError(null);
     try {
       const imported = await studentsApi.importExcel(selectedFile);
-      setResult({ count: imported.length });
+      setResult({ count: imported.imported });
       await refreshStudents();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed');
@@ -945,6 +947,7 @@ export const HODSupervisors: React.FC = () => {
   const [supMap, setSupMap]   = useState<Record<string, UserResponse>>({});
   const [loadingSups, setLoadingSups] = useState(true);
   const [assigned, setAssigned] = useState<{ [stuId: string]: string }>({});
+  const [q, setQ] = useState('');
 
   useEffect(() => {
     usersApi.byRole('SUPERVISOR')
@@ -956,14 +959,19 @@ export const HODSupervisors: React.FC = () => {
   }, []);
 
   // All students who don't yet have a supervisor assigned
-  const sample = students.filter(s => !s.supervisorId && s.stateIndex < 12);
-  
+  const sample = students
+    .filter(s => !s.supervisorId && s.stateIndex < 12)
+    .filter(s => matchesSearch(s.name, s.reg, q));
+
   return (
     <div>
-      <SectionTitle sub="Assign a supervisor once a proposal is accepted. The student gets an email with a WhatsApp button; the supervisor is notified too.">
+      <SectionTitle
+        sub="Assign a supervisor once a proposal is accepted. The student gets an email with a WhatsApp button; the supervisor is notified too."
+        right={<RowSearch value={q} onChange={setQ} />}
+      >
         Assign Supervisors
       </SectionTitle>
-      
+
       <div className="card" style={{ overflow: "hidden", maxWidth: 880 }}>
         <div className="card-hd"><h3>Students without a supervisor</h3><Badge tone="amber">{sample.length}</Badge></div>
         <table className="tbl">
@@ -1034,10 +1042,11 @@ export const ProtoReview: React.FC = () => {
   const [loading, setLoading] = useState<string | null>(null);
   const [noteFor, setNoteFor] = useState<string | null>(null);
   const [note, setNote] = useState('');
+  const [q, setQ] = useState('');
 
-  const awaiting    = students.filter(s => s.stateIndex === 2); // CASE_LETTER_APPROVED
-  const underReview = students.filter(s => s.stateIndex === 3); // PROTOTYPE_REVIEW
-  const granted     = students.filter(s => s.stateIndex === 4); // PROTOTYPE_GRANTED
+  const awaiting    = students.filter(s => s.stateIndex === 2 && matchesSearch(s.name, s.reg, q)); // CASE_LETTER_APPROVED
+  const underReview = students.filter(s => s.stateIndex === 3 && matchesSearch(s.name, s.reg, q)); // PROTOTYPE_REVIEW
+  const granted     = students.filter(s => s.stateIndex === 4 && matchesSearch(s.name, s.reg, q)); // PROTOTYPE_GRANTED
 
   async function callForReview(studentId: string) {
     setLoading(studentId);
@@ -1064,7 +1073,10 @@ export const ProtoReview: React.FC = () => {
 
   return (
     <div>
-      <SectionTitle sub="Manage prototype review sessions. Call students in, record outcomes, and grant access to proposal submission.">
+      <SectionTitle
+        sub="Manage prototype review sessions. Call students in, record outcomes, and grant access to proposal submission."
+        right={<RowSearch value={q} onChange={setQ} />}
+      >
         Prototype Review
       </SectionTitle>
 
@@ -1222,10 +1234,11 @@ export const ProposalReview: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
+  const [q, setQ] = useState('');
 
   // Students with a locked proposal (3 rejections used) have nothing pending to review —
   // they need an HOD unlock before they can resubmit, not an accept/reject decision.
-  const underReview = students.filter(s => s.stateIndex === 5); // PROPOSAL_UNDER_REVIEW
+  const underReview = students.filter(s => s.stateIndex === 5 && matchesSearch(s.name, s.reg, q)); // PROPOSAL_UNDER_REVIEW
   const queue = underReview.filter(s => !s.proposalLocked);
   const lockedQueue = underReview.filter(s => s.proposalLocked);
 
@@ -1275,7 +1288,10 @@ export const ProposalReview: React.FC = () => {
 
   return (
     <div>
-      <SectionTitle sub="Review submitted proposal documents and record an accept or reject decision.">
+      <SectionTitle
+        sub="Review submitted proposal documents and record an accept or reject decision."
+        right={<RowSearch value={q} onChange={setQ} />}
+      >
         Proposal Review
       </SectionTitle>
 
@@ -1425,9 +1441,10 @@ export const ProposalReview: React.FC = () => {
 export const BookSubmissionReview: React.FC = () => {
   const { students, refreshStudents } = useAppContext();
   const [markingId, setMarkingId] = useState<string | null>(null);
+  const [q, setQ] = useState('');
 
   // Signed off by the supervisor but not yet physically received at the HOD office
-  const queue = students.filter(s => s.stateIndex === 7 && s.bookSignedOff);
+  const queue = students.filter(s => s.stateIndex === 7 && s.bookSignedOff && matchesSearch(s.name, s.reg, q));
 
   async function handleMarkReceived(studentId: string) {
     setMarkingId(studentId);
@@ -1444,7 +1461,10 @@ export const BookSubmissionReview: React.FC = () => {
 
   return (
     <div>
-      <SectionTitle sub="Students whose supervisor has signed off — confirm once the physical/final book has been received at the HOD office.">
+      <SectionTitle
+        sub="Students whose supervisor has signed off — confirm once the physical/final book has been received at the HOD office."
+        right={<RowSearch value={q} onChange={setQ} />}
+      >
         Book Submissions
       </SectionTitle>
 
