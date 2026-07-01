@@ -1215,14 +1215,31 @@ export const ProtoReview: React.FC = () => {
 
 /* ---------------- ProposalReview ---------------- */
 export const ProposalReview: React.FC = () => {
-  const { students } = useAppContext();
+  const { students, refreshStudents } = useAppContext();
   const [active, setActive] = useState<Student | null>(null);
   const [result, setResult] = useState<{ type: 'accepted' | 'rejected'; name: string } | null>(null);
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [unlockingId, setUnlockingId] = useState<string | null>(null);
 
-  const queue = students.filter(s => s.stateIndex === 5); // PROPOSAL_UNDER_REVIEW
+  // Students with a locked proposal (3 rejections used) have nothing pending to review —
+  // they need an HOD unlock before they can resubmit, not an accept/reject decision.
+  const underReview = students.filter(s => s.stateIndex === 5); // PROPOSAL_UNDER_REVIEW
+  const queue = underReview.filter(s => !s.proposalLocked);
+  const lockedQueue = underReview.filter(s => s.proposalLocked);
+
+  async function handleUnlock(studentId: string) {
+    setUnlockingId(studentId);
+    try {
+      await proposalsApi.unlock(studentId);
+      await refreshStudents();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Unlock failed');
+    } finally {
+      setUnlockingId(null);
+    }
+  }
 
   useEffect(() => {
     setBlobUrl(null);
@@ -1248,6 +1265,7 @@ export const ProposalReview: React.FC = () => {
       setActive(null);
       setReason('');
       setBlobUrl(null);
+      await refreshStudents();
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Action failed');
     } finally {
@@ -1307,6 +1325,42 @@ export const ProposalReview: React.FC = () => {
         </table>
       </div>
 
+      {/* Locked proposals — 3 rejections used, need an HOD unlock before they can resubmit */}
+      {lockedQueue.length > 0 && (
+        <div className="card" style={{ overflow: 'hidden', marginBottom: 18 }}>
+          <div className="card-hd">
+            <h3>Locked — awaiting unlock</h3>
+            <Badge tone="red">{lockedQueue.length} locked</Badge>
+          </div>
+          <table className="tbl">
+            <thead><tr><th>Student</th><th>Organisation</th><th>Topic</th><th>Action</th></tr></thead>
+            <tbody>
+              {lockedQueue.map(s => (
+                <tr key={s.id}>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                      <Avatar name={s.name} role="Student" size={26} />
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                        <div className="mono muted" style={{ fontSize: 10.5 }}>{s.reg}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="muted" style={{ fontSize: 12.5 }}>{s.org || '—'}</td>
+                  <td className="muted" style={{ fontSize: 12.5 }}>{s.topic || '—'}</td>
+                  <td>
+                    <button className="btn btn-quiet btn-sm" disabled={unlockingId === s.id}
+                      onClick={() => handleUnlock(s.id)}>
+                      <Icon name="key" size={14} /> {unlockingId === s.id ? 'Unlocking…' : 'Grant another attempt'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* Review modal */}
       {active && (
         <Modal open onClose={() => { setActive(null); setBlobUrl(null); setReason(''); }} width={700}>
@@ -1363,6 +1417,72 @@ export const ProposalReview: React.FC = () => {
           </div>
         </Modal>
       )}
+    </div>
+  );
+};
+
+/* ---------------- BookSubmissionReview ---------------- */
+export const BookSubmissionReview: React.FC = () => {
+  const { students, refreshStudents } = useAppContext();
+  const [markingId, setMarkingId] = useState<string | null>(null);
+
+  // Signed off by the supervisor but not yet physically received at the HOD office
+  const queue = students.filter(s => s.stateIndex === 7 && s.bookSignedOff);
+
+  async function handleMarkReceived(studentId: string) {
+    setMarkingId(studentId);
+    try {
+      await studentsApi.markBookSubmitted(studentId);
+      notify('Book marked as received', 'success');
+      await refreshStudents();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to mark book as received', 'error');
+    } finally {
+      setMarkingId(null);
+    }
+  }
+
+  return (
+    <div>
+      <SectionTitle sub="Students whose supervisor has signed off — confirm once the physical/final book has been received at the HOD office.">
+        Book Submissions
+      </SectionTitle>
+
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <div className="card-hd">
+          <h3>Awaiting physical submission</h3>
+          <Badge tone="amber">{queue.length} pending</Badge>
+        </div>
+        <table className="tbl">
+          <thead><tr><th>Student</th><th>Supervisor</th><th>Signed off</th><th>Action</th></tr></thead>
+          <tbody>
+            {queue.map(s => (
+              <tr key={s.id}>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <Avatar name={s.name} role="Student" size={26} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                      <div className="mono muted" style={{ fontSize: 10.5 }}>{s.reg}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className="muted" style={{ fontSize: 12.5 }}>{s.supervisorName || '—'}</td>
+                <td className="muted" style={{ fontSize: 12.5 }}>{s.bookSignedOffAt ? fmt(s.bookSignedOffAt) : '—'}</td>
+                <td>
+                  <button className="btn btn-primary btn-sm" disabled={markingId === s.id}
+                    onClick={() => handleMarkReceived(s.id)}>
+                    <Icon name="check" size={14} /> {markingId === s.id ? 'Saving…' : 'Mark as received'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!queue.length && (
+              <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 20 }}>No books are currently awaiting submission.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };

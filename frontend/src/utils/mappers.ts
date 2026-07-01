@@ -47,9 +47,11 @@ export function mapStudent(s: StudentResponse): Student {
     examinerPreId: null,   // loaded lazily via panels API
     examinerDefId: null,   // loaded lazily via panels API
     protoPres: s.protoAttempts,
+    defenseAttempts: s.defenseAttempts,
     attempts: [],           // loaded lazily via proposals API
     nextMeeting: null,      // loaded lazily via meetings API
     bookSignedOff: s.bookSignedOff,
+    bookSignedOffAt: s.bookSignedOffAt ?? null,
     proposalLocked: s.proposalLocked,
     flagged: s.flagged,
     defense: null,          // derived from panel outcomes

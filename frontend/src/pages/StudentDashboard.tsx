@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { studentsApi } from '../api/students';
 import { proposalsApi } from '../api/proposals';
+import { supervisionApi } from '../api/supervision';
+import { panelsApi } from '../api/panels';
 import { mapStudent, mapProposalAttempt } from '../utils/mappers';
 import { getToken } from '../api/client';
 import { notify } from '../components/LetterUI';
@@ -12,7 +14,9 @@ import {
   EmptyState,
   SectionTitle,
 } from '../components/SharedUI';
+import { WeeklyAvailabilityGrid, DAY_MAP } from '../components/AvailabilityUI';
 import type { Student, ProposalAttempt } from '../types';
+import type { AvailabilitySlotResponse, PanelAssignmentResponse } from '../api/types';
 
 interface NavProps { onNav: (view: string) => void; }
 
@@ -51,6 +55,18 @@ function useMyStudent() {
   return { student, loaded, reload: () => setReloadKey(k => k + 1) };
 }
 
+// Picks the panel a student should see for a given type: the pending one if there's an
+// unresolved attempt in progress, otherwise the most recent (highest-attempt) resolved one.
+function pickActivePanel(
+  list: PanelAssignmentResponse[],
+  type: 'PRE_DEFENSE' | 'DEFENSE'
+): PanelAssignmentResponse | null {
+  const forType = list.filter(p => p.panelType === type);
+  return forType.find(p => !p.outcome)
+    ?? [...forType].sort((a, b) => b.attemptNumber - a.attemptNumber)[0]
+    ?? null;
+}
+
 const NO_PROFILE = (
   <EmptyState
     icon="users"
@@ -65,6 +81,8 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
   const [proposals, setProposals] = useState<ProposalAttempt[]>([]);
   const [submittingProposal, setSubmittingProposal] = useState(false);
   const [proposalFile, setProposalFile] = useState<File | null>(null);
+  const [preDefensePanel, setPreDefensePanel] = useState<PanelAssignmentResponse | null>(null);
+  const [defensePanel, setDefensePanel] = useState<PanelAssignmentResponse | null>(null);
 
   const loadProposals = useCallback(async (stuId: string) => {
     try {
@@ -76,6 +94,12 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
   useEffect(() => {
     if (!stu) return;
     loadProposals(stu.id);
+    panelsApi.byStudent(stu.id)
+      .then(list => {
+        setPreDefensePanel(pickActivePanel(list, 'PRE_DEFENSE'));
+        setDefensePanel(pickActivePanel(list, 'DEFENSE'));
+      })
+      .catch(() => { setPreDefensePanel(null); setDefensePanel(null); });
   }, [stu?.id, loadProposals]);
 
   async function handleSubmitProposal() {
@@ -112,6 +136,13 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
 
   const stateName = Object.keys(STATE_META)[stu.stateIndex] ?? 'REGISTERED';
   const currentMeta = STATE_META[stateName] ?? STATE_META['REGISTERED'];
+  const nextActionText = (stu.stateIndex === 7 && stu.bookSignedOff)
+    ? 'Your supervisor has approved your book. Bring the final printed/bound copy to the HOD office for official submission.'
+    : (stu.stateIndex === 10 && defensePanel?.outcome === 'REFERRED')
+    ? 'Your defense was referred for minor corrections. See the examiner\'s note below and contact your HOD about next steps.'
+    : (stu.stateIndex === 10 && defensePanel?.outcome === 'FAILED')
+    ? 'Your defense outcome was recorded as failed. Contact your HOD about re-defense arrangements.'
+    : currentMeta.next;
 
   return (
     <div>
@@ -134,7 +165,7 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
       {/* Next action */}
       <div className="card card-pad" style={{ marginBottom: 18, borderLeft: '4px solid var(--amber)', background: 'var(--amber-bg)' }}>
         <div className="eyebrow" style={{ marginBottom: 6 }}>What happens next</div>
-        <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.6 }}>{currentMeta.next}</p>
+        <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.6 }}>{nextActionText}</p>
       </div>
 
       {/* Proposal submission — only at PROTOTYPE_GRANTED or PROPOSAL_UNDER_REVIEW */}
@@ -261,6 +292,85 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
           )}
         </div>
       </div>
+
+      {/* Pre-Defense Panel */}
+      {stu.stateIndex >= 9 && (
+        <div className="card card-pad" style={{ marginTop: 18 }}>
+          <div className="eyebrow" style={{ marginBottom: 12 }}>Pre-Defense Panel</div>
+          {preDefensePanel ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Avatar name={preDefensePanel.examinerName} role="Examiner" size={40} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>{preDefensePanel.examinerName}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>Your examiner</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="calendar" size={14} style={{ color: 'var(--ink-3)' }} />
+                {preDefensePanel.scheduledAt
+                  ? new Date(preDefensePanel.scheduledAt).toLocaleString()
+                  : 'Date not yet set'}
+              </div>
+              {preDefensePanel.outcome && (
+                <Badge tone={preDefensePanel.outcome === 'CLEARED' ? 'green' : 'red'} dot>
+                  {preDefensePanel.outcome === 'CLEARED' ? 'Cleared to defend' : preDefensePanel.outcome}
+                </Badge>
+              )}
+            </div>
+          ) : (
+            <div className="muted" style={{ fontSize: 13 }}>No examiner assigned yet.</div>
+          )}
+        </div>
+      )}
+
+      {/* Defense Panel */}
+      {stu.stateIndex >= 10 && (
+        <div className="card card-pad" style={{ marginTop: 18 }}>
+          <div className="eyebrow" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            Final Defense
+            {defensePanel && defensePanel.attemptNumber > 1 && <Badge tone="amber">Attempt {defensePanel.attemptNumber}</Badge>}
+          </div>
+          {defensePanel ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Avatar name={defensePanel.examinerName} role="Examiner" size={40} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--ink)' }}>{defensePanel.examinerName}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>Your examiner</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--ink-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="calendar" size={14} style={{ color: 'var(--ink-3)' }} />
+                {defensePanel.scheduledAt
+                  ? new Date(defensePanel.scheduledAt).toLocaleString()
+                  : 'Date not yet set'}
+              </div>
+              {defensePanel.outcome ? (
+                <>
+                  <Badge
+                    tone={defensePanel.outcome === 'PASSED' ? 'green' : defensePanel.outcome === 'REFERRED' ? 'amber' : 'red'}
+                    dot
+                  >
+                    {defensePanel.outcome === 'PASSED' ? 'Passed'
+                      : defensePanel.outcome === 'REFERRED' ? 'Referred — minor corrections required'
+                      : 'Failed — re-defense required'}
+                  </Badge>
+                  {defensePanel.outcomeNote && (
+                    <div style={{ marginTop: 4, padding: '10px 12px', background: 'var(--surface)', borderRadius: 8, fontSize: 12.5, color: 'var(--ink-2)' }}>
+                      {defensePanel.outcomeNote}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <Badge tone="amber" dot>Awaiting outcome</Badge>
+              )}
+            </div>
+          ) : (
+            <div className="muted" style={{ fontSize: 13 }}>No examiner assigned yet.</div>
+          )}
+        </div>
+      )}
 
       {/* Proposal attempts */}
       {proposals.length > 0 && (
@@ -497,6 +607,17 @@ export const StudentCase: React.FC = () => {
 /* ─── StudentSupervisor ─── */
 export const StudentSupervisor: React.FC = () => {
   const { student: stu, loaded } = useMyStudent();
+  const [slots, setSlots] = useState<AvailabilitySlotResponse[]>([]);
+  const [slotsLoaded, setSlotsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!stu?.supervisorId) return;
+    setSlotsLoaded(false);
+    supervisionApi.slotsBySupervisor(stu.supervisorId)
+      .then(setSlots)
+      .catch(() => setSlots([]))
+      .finally(() => setSlotsLoaded(true));
+  }, [stu?.supervisorId]);
 
   if (!loaded) return <EmptyState title="Loading…" sub="" />;
   if (!stu) return NO_PROFILE;
@@ -508,6 +629,14 @@ export const StudentSupervisor: React.FC = () => {
         <EmptyState icon="users" title="No supervisor assigned yet" sub="Once a supervisor is assigned to you by the HOD or Facilitator, their details will appear here." />
       </div>
     );
+  }
+
+  const gridSlots: { [k: string]: number } = {};
+  let location: string | null = null;
+  for (const s of slots) {
+    const dayAbbr = Object.entries(DAY_MAP).find(([, v]) => v === s.dayOfWeek)?.[0];
+    if (dayAbbr) gridSlots[dayAbbr + '-' + s.startTime] = 1;
+    if (s.location) location = s.location;
   }
 
   return (
@@ -541,6 +670,26 @@ export const StudentSupervisor: React.FC = () => {
         <div style={{ marginTop: 18, padding: '11px 14px', background: 'var(--blue-bg)', border: '1px solid #C7DCF1', borderRadius: 9, fontSize: 12.5, color: 'var(--ink-2)', lineHeight: 1.6 }}>
           <Icon name="info" size={14} style={{ verticalAlign: -2, marginRight: 6, color: 'var(--blue)' }} />
           Contact your supervisor via email to schedule meetings. All meetings are logged in the system.
+        </div>
+      </div>
+
+      <div className="card" style={{ maxWidth: 560 }}>
+        <div className="card-hd"><h3>Weekly office hours</h3></div>
+        <div className="card-pad">
+          {!slotsLoaded ? (
+            <div className="muted" style={{ fontSize: 13 }}>Loading availability…</div>
+          ) : slots.length === 0 ? (
+            <EmptyState icon="calendar" title="No office hours published yet" sub="Your supervisor hasn't published their weekly availability." />
+          ) : (
+            <>
+              <WeeklyAvailabilityGrid slots={gridSlots} readOnly />
+              {location && (
+                <div style={{ marginTop: 13, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--ink-2)' }}>
+                  <Icon name="building" size={14} style={{ color: 'var(--ink-3)' }} /> {location}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

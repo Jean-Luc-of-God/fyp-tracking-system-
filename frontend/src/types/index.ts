@@ -112,9 +112,11 @@ export interface Student {
   examinerPreId: string | null;
   examinerDefId: string | null;
   protoPres: number;
+  defenseAttempts: number;
   attempts: ProposalAttempt[];
   nextMeeting: { ts: string; confirmed: boolean } | null;
   bookSignedOff: boolean;
+  bookSignedOffAt: string | null;
   proposalLocked: boolean;
   flagged: boolean;
   defense: StudentDefense | null;

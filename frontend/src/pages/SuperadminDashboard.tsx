@@ -135,7 +135,9 @@ export const AdminAccounts: React.FC = () => {
           password: form.password,
           phone: form.phone || undefined,
           role: form.role,
-          eligibleExaminer: form.eligibleExaminer,
+          // The EXAMINER role always implies eligibility — the checkbox only matters
+          // for other roles (e.g. a SUPERVISOR who may also examine).
+          eligibleExaminer: form.role === 'EXAMINER' ? true : form.eligibleExaminer,
         });
         notify('Account created', 'success');
       }
@@ -292,6 +294,11 @@ export const AdminAccounts: React.FC = () => {
                       Eligible examiner
                     </label>
                   )}
+                  {form.role === 'EXAMINER' && (
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      The EXAMINER role is automatically eligible to be assigned to panels — no separate checkbox needed.
+                    </div>
+                  )}
                 </>
               )}
 
@@ -319,12 +326,12 @@ export const AdminAccounts: React.FC = () => {
                 </div>
               </div>
               <label className="field-label">New password</label>
-              <input className="input" type="password" minLength={8} value={resetPwd}
-                onChange={e => setResetPwd(e.target.value)} placeholder="Min. 8 characters" />
+              <input className="input" type="password" minLength={10} value={resetPwd}
+                onChange={e => setResetPwd(e.target.value)} placeholder="Min. 10 characters" />
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, padding: "14px 18px", background: "var(--surface)", borderTop: "1px solid var(--line)" }}>
               <button className="btn btn-ghost" onClick={() => setResetFor(null)}>Cancel</button>
-              <button className="btn btn-danger" disabled={saving || resetPwd.length < 8} onClick={handleReset}>
+              <button className="btn btn-danger" disabled={saving || resetPwd.length < 10} onClick={handleReset}>
                 <Icon name="key" size={14} /> {saving ? 'Saving…' : 'Reset password'}
               </button>
             </div>
@@ -493,8 +500,7 @@ export const AdminNotifications: React.FC = () => {
 /* ---------------- AdminConfig ---------------- */
 export const AdminConfig: React.FC = () => {
   const [retention, setRetention] = useState(true);
-  const { supervisors: apiSups } = useAppContext();
-  const eligibleExaminers = apiSups.filter(s => s.examiner);
+  const { examiners: eligibleExaminers } = useAppContext();
 
   return (
     <div>
@@ -568,7 +574,7 @@ export const AdminConfig: React.FC = () => {
             </div>
             <div className="card-pad" style={{ display: "grid", gap: 8 }}>
               {eligibleExaminers.length === 0 && (
-                <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>No examiners created yet. Create users with the EXAMINER role.</div>
+                <div className="muted" style={{ fontSize: 13, padding: "8px 0" }}>No eligible examiners yet. Create a user with the EXAMINER role, or check "Eligible examiner" when creating a SUPERVISOR/HOD.</div>
               )}
               {eligibleExaminers.map(s => (
                 <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", border: "1px solid var(--line)", borderRadius: 9 }}>

@@ -37,10 +37,13 @@ export const studentsApi = {
     api.post<StudentResponse>(`/api/students/${studentId}/reject-case-letter`, { reason }),
 
   signOffBook: (studentId: string) =>
-    api.patch<StudentResponse>(`/api/students/${studentId}/sign-off-book`),
+    api.post<StudentResponse>(`/api/students/${studentId}/sign-off-book`),
+
+  markBookSubmitted: (studentId: string) =>
+    api.post<StudentResponse>(`/api/students/${studentId}/mark-book-submitted`),
 
   flag: (studentId: string, flagged: boolean) =>
-    api.patch<StudentResponse>(`/api/students/${studentId}/flag`, { flagged }),
+    api.post<StudentResponse>(`/api/students/${studentId}/flag`, { flagged }),
 
   withdraw: (studentId: string, reason?: string) =>
     api.post<StudentResponse>(`/api/students/${studentId}/withdraw`, { reason }),

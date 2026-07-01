@@ -25,7 +25,9 @@ export interface StudentResponse {
   supervisorEmail: string | null;
   supervisorPhone: string | null;
   bookSignedOff: boolean;
+  bookSignedOffAt: string | null;
   protoAttempts: number;
+  defenseAttempts: number;
   proposalLocked: boolean;
   flagged: boolean;
   note: string | null;
@@ -78,6 +80,7 @@ export interface PanelAssignmentResponse {
   examinerName: string;
   panelType: 'PRE_DEFENSE' | 'DEFENSE';
   scheduledAt: string | null;
+  attemptNumber: number;
   outcome: 'CLEARED' | 'PASSED' | 'REFERRED' | 'FAILED' | null;
   outcomeNote: string | null;
   outcomeRecordedAt: string | null;

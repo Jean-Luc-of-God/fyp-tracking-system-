@@ -67,10 +67,11 @@ interface AppContextType {
   rescheduleMeeting: (studentId: string, meetingId: string, newDateStr: string, reason: string) => void;
   logMeetingAttendance: (studentId: string, meetingId: string, status: string, notes: string) => void;
   signoffBook: (studentId: string) => void;
+  markBookSubmitted: (studentId: string) => void;
   
   // Facilitator & HOD Allocations
   assignSupervisor: (studentId: string, supervisorId: string) => void;
-  assignExaminer: (studentId: string, examinerId: string, panelType: 'predefense' | 'defense') => void;
+  assignExaminer: (studentId: string, examinerId: string, panelType: 'predefense' | 'defense', scheduledAt?: string) => void;
   recordPredefenseOutcome: (studentId: string, cleared: boolean) => void;
   recordDefenseOutcome: (studentId: string, outcome: string, panel: string, notes?: string) => void;
   
@@ -91,6 +92,10 @@ interface AppContextType {
   // Real supervisors from API (empty until authenticated)
   supervisors: Supervisor[];
   supervisorById: Record<string, Supervisor>;
+
+  // Real eligible examiners from API (any role with eligibleExaminer=true — not just SUPERVISOR)
+  examiners: Supervisor[];
+  examinerById: Record<string, Supervisor>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -123,6 +128,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [dataSource, setDataSource] = useState<'mock' | 'api'>('mock');
   const [supervisors, setSupervisors] = useState<Supervisor[]>([]);
+  const [examiners, setExaminers] = useState<Supervisor[]>([]);
 
   // Persist to localStorage (only mock/local state — API data is re-fetched on load)
   useEffect(() => {
@@ -133,9 +139,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const refreshStudents = useCallback(async () => {
     if (!getToken()) return;
     try {
-      const [apiStudents, apiSups, auditPage, failedNotifs] = await Promise.allSettled([
+      const [apiStudents, apiSups, apiExaminers, auditPage, failedNotifs] = await Promise.allSettled([
         studentsApi.list(),
         usersApi.byRole('SUPERVISOR'),
+        usersApi.examiners(),
         auditApi.list(0, 100),
         notificationsApi.failed(),
       ]);
@@ -146,6 +153,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (apiSups.status === 'fulfilled') {
         setSupervisors(apiSups.value.map(mapSupervisor));
+      }
+
+      if (apiExaminers.status === 'fulfilled') {
+        setExaminers(apiExaminers.value.map(mapSupervisor));
       }
 
       const mappedAudit = auditPage.status === 'fulfilled'
@@ -521,7 +532,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // 10. Book sign-off (pre-defense submission)
+  // 10. Book sign-off (supervisor approves — does not submit the book itself)
   const signoffBook = async (studentId: string) => {
     if (getToken()) {
       try {
@@ -530,7 +541,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...prev,
           students: prev.students.map(s =>
             s.id === studentId
-              ? { ...s, bookSignedOff: true, stateIndex: 8, enteredStageTs: updated.stateEnteredAt }
+              ? { ...s, bookSignedOff: true, bookSignedOffAt: updated.bookSignedOffAt }
               : s
           ),
         }));
@@ -558,6 +569,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (student) {
       addAuditLog(`Signed off final year book for ${student.name}`, state.activeUserId, "SUPERVISOR");
       addNotification("reached-predefense", student.email, student.name, "Student", studentId);
+    }
+  };
+
+  // 10b. HOD marks the physical book as received — this is what actually advances the state
+  const markBookSubmitted = async (studentId: string) => {
+    if (getToken()) {
+      try {
+        const updated = await studentsApi.markBookSubmitted(studentId);
+        setState(prev => ({
+          ...prev,
+          students: prev.students.map(s =>
+            s.id === studentId
+              ? { ...s, stateIndex: 8, enteredStageTs: updated.stateEnteredAt }
+              : s
+          ),
+        }));
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Failed to mark book as received');
+      }
     }
   };
 
@@ -592,7 +622,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 12. Assign examiner (Facilitator)
-  const assignExaminer = async (studentId: string, examinerId: string, panelType: 'predefense' | 'defense') => {
+  const assignExaminer = async (studentId: string, examinerId: string, panelType: 'predefense' | 'defense', scheduledAt?: string) => {
     const student = state.students.find(s => s.id === studentId);
     if (student && student.supervisorId === examinerId) {
       alert("Conflict of Interest Blocked: A student's supervisor cannot be assigned as their examiner.");
@@ -602,7 +632,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (getToken()) {
       try {
         const backendType = panelType === 'predefense' ? 'PRE_DEFENSE' : 'DEFENSE';
-        await panelsApi.assign(studentId, examinerId, backendType);
+        await panelsApi.assign(studentId, examinerId, backendType, scheduledAt);
         setState(prev => ({
           ...prev,
           students: prev.students.map(s => {
@@ -788,6 +818,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       rescheduleMeeting,
       logMeetingAttendance,
       signoffBook,
+      markBookSubmitted,
       assignSupervisor,
       assignExaminer,
       recordPredefenseOutcome,
@@ -800,6 +831,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       dataSource,
       supervisors,
       supervisorById: Object.fromEntries(supervisors.map(s => [s.id, s])),
+      examiners,
+      examinerById: Object.fromEntries(examiners.map(s => [s.id, s])),
     }}>
       {children}
     </AppContext.Provider>

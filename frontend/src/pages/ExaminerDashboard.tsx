@@ -135,6 +135,8 @@ export const ExaminerPredefense: React.FC = () => {
 
   const [panels, setPanels] = useState<PanelAssignmentResponse[] | null>(null);
   const [recording, setRecording] = useState<{ [panelId: string]: boolean }>({});
+  const [dateInputs, setDateInputs] = useState<{ [panelId: string]: string }>({});
+  const [scheduling, setScheduling] = useState<{ [panelId: string]: boolean }>({});
 
   useEffect(() => {
     if (!getToken()) return;
@@ -142,6 +144,23 @@ export const ExaminerPredefense: React.FC = () => {
       .then(list => setPanels(list.filter(p => p.panelType === 'PRE_DEFENSE')))
       .catch(() => setPanels(null));
   }, [EX_ID]);
+
+  async function handleSetSchedule(panel: PanelAssignmentResponse) {
+    const localDateTime = dateInputs[panel.id];
+    if (!localDateTime) return;
+    setScheduling(s => ({ ...s, [panel.id]: true }));
+    try {
+      const isoDateTime = new Date(localDateTime).toISOString();
+      await panelsApi.updateSchedule(panel.id, isoDateTime);
+      notify('Pre-defense date set', 'success');
+      const updated = await panelsApi.mine();
+      setPanels(updated.filter(p => p.panelType === 'PRE_DEFENSE'));
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to set schedule', 'error');
+    } finally {
+      setScheduling(s => ({ ...s, [panel.id]: false }));
+    }
+  }
 
   async function clearToDefend(panel: PanelAssignmentResponse) {
     setRecording(r => ({ ...r, [panel.id]: true }));
@@ -196,32 +215,58 @@ export const ExaminerPredefense: React.FC = () => {
             const stu = students.find(s => s.id === p.studentId);
             const cleared = p.outcome === 'CLEARED';
             return (
-              <div key={p.id} className="card card-pad" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
-                <div style={{ display: "flex", gap: 13, alignItems: "center" }}>
-                  <Avatar name={stu?.name ?? p.studentId} role="Student" size={42} />
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>
-                      {stu?.name ?? p.studentId}
+              <div key={p.id} className="card card-pad" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 13, alignItems: "center" }}>
+                    <Avatar name={stu?.name ?? p.studentId} role="Student" size={42} />
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--ink)" }}>
+                        {stu?.name ?? p.studentId}
+                      </div>
+                      <div className="muted" style={{ fontSize: 12.5 }}>{stu?.topic ?? ''}</div>
                     </div>
-                    <div className="muted" style={{ fontSize: 12.5 }}>{stu?.topic ?? ''}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <Badge tone={cleared ? "green" : p.scheduledAt ? "amber" : "grey"} dot>
+                      {cleared ? "Cleared to defend" : p.scheduledAt ? "Scheduled" : "Date not set"}
+                    </Badge>
+                    {!cleared ? (
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => clearToDefend(p)}
+                        disabled={!!recording[p.id]}
+                      >
+                        <Icon name="check" size={15} /> {recording[p.id] ? "Saving…" : "Mark cleared to defend"}
+                      </button>
+                    ) : (
+                      <span style={{ color: "var(--green-deep)", fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
+                        <Icon name="arrowRight" size={14} /> Advanced to Defense
+                      </span>
+                    )}
                   </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <Badge tone={cleared ? "green" : "amber"} dot>{cleared ? "Cleared to defend" : "Scheduled"}</Badge>
-                  {!cleared ? (
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => clearToDefend(p)}
-                      disabled={!!recording[p.id]}
-                    >
-                      <Icon name="check" size={15} /> {recording[p.id] ? "Saving…" : "Mark cleared to defend"}
-                    </button>
-                  ) : (
-                    <span style={{ color: "var(--green-deep)", fontSize: 12.5, display: "flex", alignItems: "center", gap: 6 }}>
-                      <Icon name="arrowRight" size={14} /> Advanced to Defense
+                {!cleared && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 10, borderTop: "1px solid var(--line-soft)" }}>
+                    <Icon name="calendar" size={14} style={{ color: "var(--ink-3)" }} />
+                    <span className="muted" style={{ fontSize: 12.5, minWidth: 160 }}>
+                      {p.scheduledAt ? new Date(p.scheduledAt).toLocaleString() : 'No date set yet'}
                     </span>
-                  )}
-                </div>
+                    <input
+                      type="datetime-local"
+                      className="input"
+                      style={{ height: 32, fontSize: 12.5 }}
+                      value={dateInputs[p.id] || ''}
+                      onChange={e => setDateInputs(d => ({ ...d, [p.id]: e.target.value }))}
+                    />
+                    <button
+                      className="btn btn-quiet btn-sm"
+                      disabled={!dateInputs[p.id] || !!scheduling[p.id]}
+                      onClick={() => handleSetSchedule(p)}
+                    >
+                      {scheduling[p.id] ? 'Saving…' : p.scheduledAt ? 'Update date' : 'Set date'}
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}

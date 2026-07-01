@@ -16,7 +16,8 @@ import { Timeline } from '../components/Timeline';
 import {
   WeeklyAvailabilityGrid,
   GroupSessionCard,
-  defaultAttendance
+  defaultAttendance,
+  DAY_MAP
 } from '../components/AvailabilityUI';
 import {
   fmt,
@@ -80,7 +81,7 @@ export const SupDashboard: React.FC<SupervisorDashboardProps> = ({ onOpen, onNav
   const examinees = students.filter(s => s.examinerPreId === SUP_ID || s.examinerDefId === SUP_ID);
 
   const toConfirm = mine.filter(s => s.nextMeeting && !s.nextMeeting.confirmed);
-  const toSignOff = mine.filter(s => s.stateIndex === 7);
+  const toSignOff = mine.filter(s => s.stateIndex === 7 && !s.bookSignedOff);
   const flagged = mine.filter(s => s.flagged);
   
   const preToMark = examinees.filter(s => s.stateIndex === 9 && s.predefenseStatus !== "Cleared to defend");
@@ -117,9 +118,9 @@ export const SupDashboard: React.FC<SupervisorDashboardProps> = ({ onOpen, onNav
     role: "Supervisor", 
     icon: "checkCircle", 
     tone: "blue", 
-    label: "Book ready to sign off", 
-    who: s.name, 
-    sub: s.id + " · advances to pre-defense", 
+    label: "Book ready to sign off",
+    who: s.name,
+    sub: s.id + " · notifies student to bring book to HOD office",
     cta: "Review", 
     page: "supervision", 
     id: s.id 
@@ -277,10 +278,6 @@ const AttendanceModal: React.FC<AttendanceModalProps> = ({ session, students, in
 };
 
 /* ---------------- Weekly availability + group sessions ---------------- */
-// Map "Mon" → "MONDAY" for the API
-const DAY_MAP: Record<string, string> = {
-  Mon: 'MONDAY', Tue: 'TUESDAY', Wed: 'WEDNESDAY', Thu: 'THURSDAY', Fri: 'FRIDAY',
-};
 // Next hour string (09:00 → 10:00)
 function nextHour(t: string) {
   const [h, m] = t.split(':').map(Number);
@@ -722,7 +719,7 @@ export const SupSupervision: React.FC<SupSupervisionProps> = ({ focusStudent }) 
   if (!stu) return <EmptyState title="No students" sub="You are not supervising any students in this cohort." />;
 
   const meetings = apiMeetings ?? getStudentMeetings(stu.id);
-  const signedOff = stu.stateIndex >= 8;
+  const signedOff = stu.bookSignedOff;
 
   async function handleLogMeeting() {
     setMeetingSaving(true);
@@ -754,7 +751,7 @@ export const SupSupervision: React.FC<SupSupervisionProps> = ({ focusStudent }) 
 
   function handleSignoff() {
     signoffBook(stu!.id);
-    notify("Book signed off — advanced to Pre-Defense", "success");
+    notify("Book signed off — student notified to bring it to the HOD office", "success");
   }
 
   return (
@@ -865,15 +862,25 @@ export const SupSupervision: React.FC<SupSupervisionProps> = ({ focusStudent }) 
               <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                 <span style={{ width: 40, height: 40, borderRadius: 10, background: signedOff ? "var(--green)" : "var(--navy)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", flex: "none" }}><Icon name={signedOff ? "checkCircle" : "book"} size={20} /></span>
                 <div>
-                  <div style={{ fontSize: 14.5, fontWeight: 600, color: "var(--ink)" }}>{signedOff ? "Book signed off" : "Sign off the book"}</div>
-                  <div className="muted" style={{ fontSize: 12.5 }}>{signedOff ? "Student advanced to Pre-Defense. Forward-only — does not return to supervision." : "Advances the student to Pre-Defense. This is recorded with your name and timestamp."}</div>
+                  <div style={{ fontSize: 14.5, fontWeight: 600, color: "var(--ink)" }}>
+                    {stu.stateIndex >= 8 ? "Book received by HOD" : signedOff ? "Signed off — awaiting HOD receipt" : "Sign off the book"}
+                  </div>
+                  <div className="muted" style={{ fontSize: 12.5 }}>
+                    {stu.stateIndex >= 8
+                      ? "The HOD has confirmed receipt. Student has advanced to Pre-Defense."
+                      : signedOff
+                        ? "The student has been notified to bring the final printed/bound copy to the HOD office."
+                        : "The student will be notified to bring the final printed/bound copy to the HOD office. Recorded with your name and timestamp."}
+                  </div>
                 </div>
               </div>
               {signedOff ? (
-                <Badge tone="green" dot>Signed {fmt(stu.stateIndex >= 8 ? stu.enteredStageTs : new Date().toISOString())}</Badge>
+                <Badge tone={stu.stateIndex >= 8 ? "green" : "amber"} dot>
+                  Signed {fmt(stu.bookSignedOffAt || new Date().toISOString())}
+                </Badge>
               ) : (
                 <button className="btn btn-primary" onClick={handleSignoff} disabled={!confirmed}>
-                  <Icon name="check" size={15} /> Sign off &amp; advance
+                  <Icon name="check" size={15} /> Sign off the book
                 </button>
               )}
             </div>

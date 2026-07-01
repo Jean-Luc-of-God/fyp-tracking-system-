@@ -37,6 +37,7 @@ import {
   HODSupervisorWindow,
   ProtoReview,
   ProposalReview,
+  BookSubmissionReview,
 } from './pages/HODDashboard';
 import { 
   AdminDashboard, 
@@ -224,8 +225,10 @@ function MainApp() {
         case "review": return <HODReview />;
         case "supervisors": return <HODSupervisors />;
         case "examiners": return <FacExaminers />;
+        case "examining": return <SupExamining focusStudent={focusStudentId ? students.find(s => s.id === focusStudentId) || null : null} />;
         case "proto-review": return <ProtoReview />;
         case "proposal-review": return <ProposalReview />;
+        case "book-review": return <BookSubmissionReview />;
         case "mysupervision": return <HODSupervisorWindow />;
         case "availability": return <StaffAvailabilityDirectory title="Supervisor Availability" sub="Weekly office hours and contact points for staff." />;
         case "records": return <HODRecords />;

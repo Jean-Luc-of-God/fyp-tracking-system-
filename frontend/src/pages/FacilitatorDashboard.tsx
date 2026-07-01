@@ -22,6 +22,8 @@ import {
 } from '../utils/fypData';
 import { notify } from '../components/LetterUI';
 import { proposalsApi } from '../api/proposals';
+import { panelsApi } from '../api/panels';
+import type { PanelAssignmentResponse } from '../api/types';
 import { mapProposalAttempt } from '../utils/mappers';
 import { getToken } from '../api/client';
 
@@ -569,16 +571,46 @@ export const FacStudents: React.FC<FacStudentsProps> = ({ focusStudent, onClearF
 
 /* ---------------- FacExaminers Component ---------------- */
 export const FacExaminers: React.FC = () => {
-  const { students, assignExaminer, refreshStudents, supervisors: apiSups, supervisorById: apiSupById } = useAppContext();
-  const supList = apiSups;
+  const {
+    students, assignExaminer, refreshStudents,
+    supervisorById: apiSupById,
+    examiners: apiExaminers,
+  } = useAppContext();
   const supMap = apiSupById;
   const [scheduling, setScheduling] = useState<string | null>(null);
-  const [assigned, setAssigned] = useState<{ [stuId: string]: string }>({});
+  const [scheduledAt, setScheduledAt] = useState<{ [stuId: string]: string }>({});
+  const [selectedExaminer, setSelectedExaminer] = useState<{ [stuId: string]: string }>({});
+  const [assigning, setAssigning] = useState<string | null>(null);
+  const [panelsByStudent, setPanelsByStudent] = useState<Record<string, PanelAssignmentResponse[]>>({});
 
   // Step 1: book submitted, waiting to be scheduled for pre-defense
   const bookSubmitted = students.filter(s => s.stateIndex === 8);
+  // Students who could need a panel assignment right now (pre-defense or defense phase)
+  const preDefenseCandidates = students.filter(s => s.stateIndex === 9);
+  const defenseCandidates = students.filter(s => s.stateIndex === 10);
+
+  const loadPanels = React.useCallback(async () => {
+    const ids = [...preDefenseCandidates, ...defenseCandidates].map(s => s.id);
+    if (!getToken() || ids.length === 0) { setPanelsByStudent({}); return; }
+    const results = await Promise.all(ids.map(id => panelsApi.byStudent(id).catch(() => [] as PanelAssignmentResponse[])));
+    const map: Record<string, PanelAssignmentResponse[]> = {};
+    ids.forEach((id, i) => { map[id] = results[i]; });
+    setPanelsByStudent(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students.length]);
+
+  useEffect(() => { loadPanels(); }, [loadPanels]);
+
+  // "Pending" means no outcome recorded yet — after a REFERRED/FAILED re-defense outcome, the
+  // old (resolved) row still exists, so checking "any panel of this type" would wrongly keep
+  // hiding the student from needing a new examiner.
+  const hasPendingPanel = (studentId: string, type: 'PRE_DEFENSE' | 'DEFENSE') =>
+    (panelsByStudent[studentId] || []).some(p => p.panelType === type && !p.outcome);
+
   // Step 2: in pre-defense, waiting for examiner assignment
-  const needExaminer = students.filter(s => s.stateIndex === 9 && !s.examinerPreId);
+  const needExaminer = preDefenseCandidates.filter(s => !hasPendingPanel(s.id, 'PRE_DEFENSE'));
+  // Step 3: in defense, waiting for examiner assignment
+  const needDefenseExaminer = defenseCandidates.filter(s => !hasPendingPanel(s.id, 'DEFENSE'));
 
   async function handleSchedule(stuId: string) {
     setScheduling(stuId);
@@ -594,15 +626,26 @@ export const FacExaminers: React.FC = () => {
     }
   }
 
-  async function handleAssign(stu: Student, exId: string) {
-    await assignExaminer(stu.id, exId, 'predefense');
-    setAssigned(a => ({ ...a, [stu.id]: exId }));
-    notify(`Examiner assigned to ${stu.name}`, 'success');
+  async function handleAssign(stu: Student, panelType: 'predefense' | 'defense') {
+    const exId = selectedExaminer[stu.id];
+    const localDateTime = scheduledAt[stu.id];
+    if (!exId || !localDateTime) return;
+    setAssigning(stu.id);
+    try {
+      const isoDateTime = new Date(localDateTime).toISOString();
+      await assignExaminer(stu.id, exId, panelType, isoDateTime);
+      notify(`Examiner assigned to ${stu.name}`, 'success');
+      await loadPanels();
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Failed to assign examiner', 'error');
+    } finally {
+      setAssigning(null);
+    }
   }
 
   return (
     <div>
-      <SectionTitle sub="Two steps: schedule pre-defense, then assign an examiner. A student's own supervisor can never be their examiner.">Assign Pre-Defense</SectionTitle>
+      <SectionTitle sub="Schedule pre-defense, assign a pre-defense examiner, then assign a defense examiner once cleared. A student's own supervisor can never be their examiner.">Assign Examiners</SectionTitle>
 
       <div style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 16px", background: "var(--violet-bg)", border: "1px solid #D9CDEC", borderRadius: 10, marginBottom: 22, fontSize: 13 }}>
         <Icon name="scale" size={17} style={{ color: "var(--violet)", flex: "none", marginTop: 1 }} />
@@ -659,51 +702,102 @@ export const FacExaminers: React.FC = () => {
       </div>
 
       {/* Step 2 */}
+      {renderAssignTable({
+        title: 'Step 2 — Assign Pre-Defense Examiner',
+        sub: 'These students are in Pre-Defense. Assign an examiner to complete the panel.',
+        emptyText: 'No students awaiting pre-defense examiner assignment.',
+        candidates: needExaminer,
+        panelType: 'predefense',
+      })}
+
+      {/* Step 3 */}
+      {renderAssignTable({
+        title: 'Step 3 — Assign Defense Examiner',
+        sub: 'These students cleared pre-defense and are in Defense. Assign an examiner to complete the panel.',
+        emptyText: 'No students awaiting defense examiner assignment.',
+        candidates: needDefenseExaminer,
+        panelType: 'defense',
+      })}
+    </div>
+  );
+
+  function renderAssignTable(opts: {
+    title: string; sub: string; emptyText: string;
+    candidates: Student[]; panelType: 'predefense' | 'defense';
+  }) {
+    const { title, sub, emptyText, candidates, panelType } = opts;
+    const backendType = panelType === 'predefense' ? 'PRE_DEFENSE' : 'DEFENSE';
+    return (
       <div className="card" style={{ overflow: "hidden", marginBottom: 20 }}>
         <div className="card-hd">
           <div>
-            <h3>Step 2 — Assign Examiner</h3>
-            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>These students are in Pre-Defense. Assign an examiner to complete the panel.</div>
+            <h3>{title}</h3>
+            <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{sub}</div>
           </div>
-          <Badge tone="violet">{needExaminer.length} need examiner</Badge>
+          <Badge tone="violet">{candidates.length} need examiner</Badge>
         </div>
-        {needExaminer.length === 0 ? (
+        {candidates.length === 0 ? (
           <div className="card-pad">
-            <div className="muted" style={{ fontSize: 13, textAlign: "center", padding: "12px 0" }}>No students awaiting examiner assignment.</div>
+            <div className="muted" style={{ fontSize: 13, textAlign: "center", padding: "12px 0" }}>{emptyText}</div>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table className="tbl">
-              <thead><tr><th>Student</th><th>Supervisor (excluded)</th><th>Assign examiner</th><th></th></tr></thead>
+              <thead><tr><th>Student</th><th>Supervisor (excluded)</th><th>Date &amp; time</th><th>Assign examiner</th><th></th></tr></thead>
               <tbody>
-                {needExaminer.map(s => {
+                {candidates.map(s => {
                   const sup = s.supervisorId ? supMap[s.supervisorId] : null;
-                  const eligible = supList.filter(x => x.examiner && x.id !== s.supervisorId);
-                  const done = assigned[s.id];
+                  // Exclude the student's supervisor, and anyone who already examined this
+                  // student at the *other* panel stage — but a re-defense may legitimately
+                  // reuse the same examiner who did an earlier defense attempt.
+                  const alreadyExamined = new Set(
+                    (panelsByStudent[s.id] || [])
+                      .filter(p => p.panelType !== backendType)
+                      .map(p => p.examinerId)
+                  );
+                  const eligible = apiExaminers.filter(x => x.id !== s.supervisorId && !alreadyExamined.has(x.id));
+                  const priorAttempts = (panelsByStudent[s.id] || []).filter(p => p.panelType === backendType);
+                  const nextAttempt = priorAttempts.length > 0
+                    ? Math.max(...priorAttempts.map(p => p.attemptNumber)) + 1
+                    : 1;
                   return (
                     <tr key={s.id}>
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
                           <Avatar name={s.name} role="Student" size={26} />
                           <div>
-                            <div style={{ fontWeight: 600, color: "var(--ink)" }}>{s.name}</div>
+                            <div style={{ fontWeight: 600, color: "var(--ink)", display: "flex", alignItems: "center", gap: 6 }}>
+                              {s.name}
+                              {nextAttempt > 1 && <Badge tone="amber">Attempt {nextAttempt}</Badge>}
+                            </div>
                             <div className="mono muted" style={{ fontSize: 10.5 }}>{s.reg || s.id}</div>
                           </div>
                         </div>
                       </td>
                       <td>{sup ? <span style={{ color: "var(--ink-3)" }}>{sup.name}</span> : <span className="faint">—</span>}</td>
                       <td>
-                        {done ? (
-                          <Badge tone="green" dot>{(supMap[done] as any)?.name || done}</Badge>
-                        ) : (
-                          <select className="select" style={{ width: 210, height: 34 }} defaultValue="" onChange={e => e.target.value && handleAssign(s, e.target.value)}>
-                            <option value="" disabled>Choose examiner…</option>
-                            {eligible.map(x => <option key={x.id} value={x.id}>{x.name}{x.title ? ` — ${x.title}` : ''}</option>)}
-                          </select>
-                        )}
+                        <input
+                          type="datetime-local"
+                          className="input"
+                          style={{ height: 34, fontSize: 12.5 }}
+                          value={scheduledAt[s.id] || ''}
+                          onChange={e => setScheduledAt(a => ({ ...a, [s.id]: e.target.value }))}
+                        />
                       </td>
                       <td>
-                        {done && <span style={{ color: "var(--green-deep)", fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}><Icon name="check" size={14} /> Assigned</span>}
+                        <select className="select" style={{ width: 210, height: 34 }}
+                          value={selectedExaminer[s.id] || ''}
+                          onChange={e => setSelectedExaminer(a => ({ ...a, [s.id]: e.target.value }))}>
+                          <option value="" disabled>Choose examiner…</option>
+                          {eligible.map(x => <option key={x.id} value={x.id}>{x.name}{x.title ? ` — ${x.title}` : ''}</option>)}
+                        </select>
+                      </td>
+                      <td>
+                        <button className="btn btn-primary btn-sm"
+                          disabled={!selectedExaminer[s.id] || !scheduledAt[s.id] || assigning === s.id}
+                          onClick={() => handleAssign(s, panelType)}>
+                          {assigning === s.id ? 'Assigning…' : 'Assign'}
+                        </button>
                       </td>
                     </tr>
                   );
@@ -713,8 +807,8 @@ export const FacExaminers: React.FC = () => {
           </div>
         )}
       </div>
-    </div>
-  );
+    );
+  }
 };
 
 /* ---------------- FacPending Component ---------------- */

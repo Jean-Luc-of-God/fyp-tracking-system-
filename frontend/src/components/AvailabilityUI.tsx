@@ -7,6 +7,11 @@ import { fmtFull, supById, SUPERVISORS } from '../utils/fypData';
 export const AVAIL_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 export const AVAIL_SLOTS = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"];
 
+// Maps "Mon" → "MONDAY" for the API; backend stores/returns the full day name.
+export const DAY_MAP: Record<string, string> = {
+  Mon: 'MONDAY', Tue: 'TUESDAY', Wed: 'WEDNESDAY', Thu: 'THURSDAY', Fri: 'FRIDAY',
+};
+
 /* ---------------- Weekly Availability Grid Component ---------------- */
 interface WeeklyAvailabilityGridProps {
   slots: { [slot: string]: number };
