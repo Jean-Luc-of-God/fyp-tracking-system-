@@ -63,6 +63,7 @@ Latest compiled file: **`/home/manishimwe-kwizera-jean-luc/Downloads/FYP_Report_
 
 1. **UI Screenshots (Figures 10–17)** — take browser screenshots of the live app (login, dashboards, student import, panels, supervision, notifications) and insert into the ODT.
 2. **Deployment** — app is ready to deploy. `render.yaml` is in the repo root. Plan: Render (backend) + Supabase (PostgreSQL) + Upstash (Redis) + Vercel (frontend). Accounts not yet created.
+3. **Proposal acceptance flow** — rejection and 3-attempt lock both tested and working. Acceptance not yet tested (planned next session).
 
 ---
 
@@ -112,11 +113,11 @@ export $(grep -v '^#' ../.env | xargs)
 | Backend | Spring Boot 3.2.5, Java 17 |
 | ORM | Spring Data JPA + Hibernate |
 | Database | PostgreSQL 16 — Docker container `fyp_postgres` (fyp_tracker / fyp_user / fyp_pass) |
-| Migrations | Flyway — V1 through V6 applied |
+| Migrations | Flyway — V1 through V7 applied |
 | Cache / Blacklist | Redis 7 |
 | Auth | Spring Security + JWT (jjwt **0.12.6**), BCrypt cost 12 |
-| Rate limiting | Bucket4j 8.10.1 — 5 login attempts / IP / 15 min |
-| Email | Spring Mail (JavaMailSender) |
+| Rate limiting | Removed for development — `LoginRateLimiter.java` still exists but is not wired in |
+| Email | Spring Mail (JavaMailSender) — Gmail SMTP port 465 SSL, IPv6 required |
 | Excel import | Apache POI 5.2.5 |
 | Frontend | React 19, TypeScript, Vite |
 | Port | Backend: **9191** (not 8080) |
@@ -172,8 +173,36 @@ Located at `backend/src/main/resources/db/migration/`
 | V4__add_letter_rejection_reason.sql | Adds rejection reason to case letters | Applied |
 | V5__reset_superadmin_password.sql | Resets admin password via ON CONFLICT DO UPDATE | Applied |
 | V6__add_letter_file_name.sql | Adds letter_file_name column to students table | Applied |
+| V7__add_requirements_and_proposal_files.sql | Adds requirements_file_name (students) + proposal_file_name (proposal_attempts) | Applied |
 
-**Never edit an applied migration. Add V7__ for new changes.**
+**Never edit an applied migration. Add V8__ for new changes.**
+
+---
+
+## Email Configuration (Gmail SMTP)
+
+Gmail is configured via environment variables in `.env`. Critical notes:
+- Port **465** with SSL (not 587 STARTTLS — Google blocks STARTTLS from this host's IPv4)
+- Java must prefer IPv6: `System.setProperty("java.net.preferIPv6Addresses", "true")` in `MailConfig.java` AND `<jvmArguments>` in `pom.xml`
+- Use a Gmail App Password (16 chars, no spaces) — not the Gmail account password
+- `MailConfig.java` creates a custom `JavaMailSenderImpl` bean with explicit smtps properties
+- Required `.env` keys: `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM`, `MAIL_PORT=465`
+
+---
+
+## OTP Password Reset Flow
+
+Fully implemented and tested. User clicks "Forgot password" on login screen:
+1. Enter email → `POST /api/auth/forgot-password` (public) → 6-digit OTP sent to their Gmail inbox
+2. Enter OTP → `POST /api/auth/reset-password` with `{email, otp, newPassword}` (public)
+3. OTP stored in Redis with 15-min TTL, deleted on first use (`otp:{email}` key)
+
+**Key files:**
+- `backend/src/main/java/rw/aauca/fyp/service/OtpService.java` — generates/validates OTP in Redis
+- `backend/src/main/java/rw/aauca/fyp/config/MailConfig.java` — custom mail sender with IPv6 fix
+- `frontend/src/components/Layout.tsx` — `LoginLauncher` has 3-step OTP flow built in
+
+Both `/api/auth/forgot-password` and `/api/auth/reset-password` are listed as public in `SecurityConfig.java`.
 
 ---
 
@@ -181,7 +210,7 @@ Located at `backend/src/main/resources/db/migration/`
 
 - JWT auth with HMAC-SHA384, 24h expiry, blacklist on logout (Redis)
 - BCrypt cost 12 for passwords
-- Login rate limit: 5 attempts / IP / 15 min (Bucket4j, in-memory)
+- **Login rate limiter removed** — `LoginRateLimiter.java` exists but `AuthController` no longer calls it (removed to allow unrestricted testing). Re-wire before production.
 - Role-based access control via `@PreAuthorize` on all endpoints
 - HTTP security headers: HSTS, X-Frame-Options, XSS Protection, Content-Type-Options
 - `open-in-view: false` in application.yml
@@ -193,9 +222,11 @@ Located at `backend/src/main/resources/db/migration/`
 
 ```
 rw.aauca.fyp/
-├── config/SecurityConfig.java          # CORS uses ${app.frontend-url} env var
+├── config/
+│   ├── SecurityConfig.java             # CORS uses ${app.frontend-url} env var
+│   └── MailConfig.java                 # Custom JavaMailSender with IPv6 + SSL fix
 ├── controller/
-│   ├── AuthController.java             # POST /api/auth/login, POST /api/auth/logout
+│   ├── AuthController.java             # /api/auth/login, logout, forgot-password, reset-password
 │   ├── StudentController.java          # /api/students/**
 │   ├── ProposalController.java         # /api/proposals/**
 │   ├── PanelController.java            # /api/panels/**
@@ -205,16 +236,17 @@ rw.aauca.fyp/
 │   ├── JwtUtil.java                    # jjwt 0.12.6 API (verifyWith, parseSignedClaims)
 │   ├── JwtAuthFilter.java              # reads Bearer token, checks blacklist
 │   ├── JwtBlacklistService.java        # Redis-backed logout blacklist
-│   └── LoginRateLimiter.java           # Bucket4j, ConcurrentHashMap<IP, Bucket>
+│   └── LoginRateLimiter.java           # Bucket4j (exists but NOT wired in AuthController)
 └── service/
-    ├── AuthService.java
+    ├── AuthService.java                # login + OTP password reset
+    ├── OtpService.java                 # Redis OTP store (15-min TTL, one-time use)
     ├── UserService.java
-    ├── StudentService.java             # Excel import via Apache POI
+    ├── StudentService.java             # Excel import, file uploads (letter + requirements)
     ├── StudentStateService.java        # 13-state machine — the core
-    ├── ProposalService.java            # 3-attempt limit, locking, Hibernate flush bug fixed
+    ├── ProposalService.java            # 3-attempt limit, locking, file upload, Hibernate flush bug fixed
     ├── PanelService.java               # no supervisor as own examiner rule
     ├── SupervisionService.java         # slots + meetings
-    ├── EmailService.java               # all notification methods
+    ├── EmailService.java               # all notification methods + OTP email
     └── AuditService.java               # immutable audit log
 ```
 
@@ -223,8 +255,12 @@ rw.aauca.fyp/
 ## API Endpoints (all implemented)
 
 ### Auth
+| Method | Path | Access |
+|---|---|---|
 | POST | /api/auth/login | public |
 | POST | /api/auth/logout | authenticated — blacklists JWT |
+| POST | /api/auth/forgot-password | public — sends OTP to email |
+| POST | /api/auth/reset-password | public — validates OTP, sets new password |
 
 ### Users: /api/users/**
 GET list, GET by role, GET examiners, POST create, PATCH enable/disable, POST reset-password
@@ -232,14 +268,50 @@ GET list, GET by role, GET examiners, POST create, PATCH enable/disable, POST re
 ### Students: /api/students/**
 GET list, GET by id, GET by state, POST import (Excel), POST assign-supervisor, POST transition, PATCH sign-off-book, PATCH flag, POST withdraw
 
+**File endpoints:**
+- `POST /api/students/me/submit-case-letter` — student submits letter + optional file
+- `GET /api/students/me/letter-file` — student downloads their own case letter (STUDENT role)
+- `GET /api/students/{id}/letter-file` — HOD/staff downloads student's case letter
+- `POST /api/students/{id}/requirements-doc` — HOD uploads prototype requirements for a student
+- `GET /api/students/{id}/requirements-doc` — HOD/staff downloads requirements doc
+- `GET /api/students/me/requirements-doc` — student downloads their requirements doc (STUDENT role)
+
+**File storage:** `uploads/case-letters/{studentId}/`, `uploads/requirements/{studentId}/`
+
 ### Proposals: /api/proposals/{studentId}/**
-POST submit, POST review (accept/reject), POST unlock, GET history
+| Method | Path | Notes |
+|---|---|---|
+| POST | /submit | accepts optional `file` multipart param |
+| POST | /review | HOD/Facilitator accepts or rejects with reason |
+| POST | /unlock | HOD unlocks after 3 rejections |
+| GET | /history | full attempt list |
+| GET | /latest-file | authenticated blob download of most recent proposal PDF |
+
+**File storage:** `uploads/proposals/{studentId}/attempt-{n}/`
 
 ### Panels: /api/panels/**
 POST assign, PATCH outcome (auto-transitions state), DELETE, GET by student, GET /me (examiner)
 
 ### Supervision: /api/supervision/**
 POST slots, GET slots/me, GET slots/{supervisorId}, DELETE slot, POST meetings, PATCH confirm, PATCH outcome, GET meetings/me, GET meetings/student/{id}
+
+---
+
+## Frontend Pages & Key Components
+
+| Component | File | Notes |
+|---|---|---|
+| Login + OTP flow | `Layout.tsx` → `LoginLauncher` | 3-step: login / request-otp / enter-otp |
+| Student dashboard | `StudentDashboard.tsx` | Case letter upload, proposal PDF upload, requirements download |
+| HOD letter review | `HODDashboard.tsx` → `ReviewLetterModal` | Blob URL fetch (auth), optional requirements upload on approve |
+| HOD proposal review | `HODDashboard.tsx` → `ProposalReview` | Blob URL PDF viewer, accept/reject, live badge on sidebar |
+| HOD prototype review | `HODDashboard.tsx` → `ProtoReview` | Call in students, record outcome, grant prototype |
+
+**Vite proxy:** `vite.config.ts` proxies `/api/*` → `http://localhost:9191` so raw `fetch('/api/...')` works.
+
+**Token storage:** `localStorage` key `fyp_jwt`. Use `getToken()` from `frontend/src/api/client.ts`.
+
+**Important:** iframes cannot send `Authorization` headers. All authenticated file endpoints must be fetched with `fetch()` + Bearer token, then rendered as `URL.createObjectURL(blob)`. This is already done in `ReviewLetterModal` and `ProposalReview`.
 
 ---
 
@@ -251,7 +323,9 @@ POST slots, GET slots/me, GET slots/{supervisorId}, DELETE slot, POST meetings, 
 - **Redis** → Upstash (free)
 - **Frontend** → Vercel (free, root dir: `frontend/`, env var: `VITE_API_URL=<render url>`)
 
-The backend reads `PORT` env var for the port (Railway/Render inject this). Redis password supported via `REDIS_PASSWORD` env var. CORS reads `FRONTEND_URL` env var.
+The backend reads `PORT` env var for the port (Render injects this). Redis password supported via `REDIS_PASSWORD` env var. CORS reads `FRONTEND_URL` env var.
+
+**Before deploying:** re-enable the login rate limiter in `AuthController.java` (inject `LoginRateLimiter` and call `tryConsume(ip)`).
 
 ---
 
@@ -301,10 +375,13 @@ Save as `figures/Figure 10.png` through `figures/Figure 17.png`, then rerun `pyt
 - Proposal service: Hibernate FlushMode.AUTO flushes the dirty `attempt` before `countByStudentIdAndStatus` runs — count already includes current rejection, no `+1` needed. This was a production bug that was found and fixed.
 - jjwt 0.12.6 API: use `verifyWith(key)`, `parseSignedClaims(token).getPayload()`, builder uses `id/subject/issuedAt/expiration` (not `setId/setSubject`)
 - Testcontainers abandoned (Docker API version incompatibility) — integration tests use dev PostgreSQL with `@Transactional` rollback
-- `LazyInitializationException` on `GET /api/students/me` — fixed 2026-07-01 by adding `@EntityGraph(attributePaths = {"user", "supervisor"})` to ALL `StudentRepository` query methods. Without this, accessing `student.getUser()` outside a transaction throws an exception.
-- Student case letter submit returned 500 — fixed 2026-07-01: frontend now always calls `updateMyDetails` before `submitCaseLetter` so the backend always has the project topic and organisation saved.
-- Frontend was showing mock data (fake supervisors, 40 fake students) — fixed 2026-07-01: removed `buildMockStudents()` from AppContext initial state, bumped localStorage key from v1 to v2 to clear old cache.
-- Case letter file upload added 2026-07-01: `POST /api/students/me/submit-case-letter` now accepts optional `MultipartFile file`. Files saved to `uploads/case-letters/{studentId}/`. HOD downloads via `GET /api/students/{id}/letter-file`.
+- `LazyInitializationException` on `GET /api/students/me` — fixed by adding `@EntityGraph(attributePaths = {"user", "supervisor"})` to ALL `StudentRepository` query methods
+- Student case letter submit returned 500 — fixed: frontend always calls `updateMyDetails` before `submitCaseLetter`
+- Frontend was showing mock data (fake supervisors, 40 fake students) — fixed: removed `buildMockStudents()`, bumped localStorage key from v1 to v2
+- Gmail SMTP `Connection reset` on port 587/465 — fixed: Java defaults to IPv4 which Google blocks on this host. Solution: `System.setProperty("java.net.preferIPv6Addresses", "true")` in `MailConfig.java` + `<jvmArguments>` in `pom.xml`
+- iframes do not send `Authorization` headers — HOD letter viewer and proposal viewer both fixed to use `fetch()` + `createObjectURL(blob)` instead of bare iframe src
+- `proposalsApi` not imported in `HODDashboard.tsx` — caused runtime crash on proposal reject. Fixed by adding import.
+- Login rate limiter (Bucket4j) was blocking testing after 5 attempts — removed from `AuthController` (class still exists, not wired in)
 
 ---
 
@@ -314,4 +391,5 @@ Save as `figures/Figure 10.png` through `figures/Figure 17.png`, then rerun `pyt
 - Backend port: **9191** (not 8080 — something else runs on 8080)
 - Always `export $(grep -v '^#' ../.env | xargs)` before running Maven — Spring Boot does not auto-read `.env` files
 - If Flyway fails with "more than one migration with version X", check `target/classes/db/migration/` for stale files from old builds and delete them, then restart
-- The `.env` file exists and has a valid `JWT_SECRET` (the placeholder value from `.env.example` is long enough for dev)
+- The `.env` file exists and has valid values for JWT, DB, Redis, and Gmail SMTP — it is gitignored and must never be committed
+- `frontend/.env` sets `VITE_API_URL=http://localhost:9191` — this is gitignored too; recreate on a new machine
