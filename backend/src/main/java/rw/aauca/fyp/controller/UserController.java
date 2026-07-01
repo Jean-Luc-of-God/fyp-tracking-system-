@@ -61,7 +61,7 @@ public class UserController {
     public ResponseEntity<?> resetPassword(@PathVariable UUID id,
                                            @RequestBody Map<String, String> body,
                                            @AuthenticationPrincipal User actor) {
-        String newPassword = body.get("password");
+        String newPassword = body.get("newPassword");
         if (newPassword == null || newPassword.length() < 10) {
             return ResponseEntity.badRequest().body(Map.of("message", "Password must be at least 10 characters"));
         }
