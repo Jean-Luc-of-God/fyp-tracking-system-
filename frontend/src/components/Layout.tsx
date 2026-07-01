@@ -253,11 +253,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                 <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{userFullName || cur.person}</div>
                 <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{cur.label}</div>
               </div>
-              {onLogout && (
-                <button className="btn btn-ghost btn-sm" onClick={onLogout} title="Log out">
-                  <Icon name="external" size={14} />
-                </button>
-              )}
             </div>
           </div>
         </header>
