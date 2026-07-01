@@ -7,6 +7,9 @@ backend/target/
 *.jar
 *.war
 
+# Runtime file uploads (case letters, proposals) — not source
+backend/uploads/
+
 # Logs
 logs
 *.log
