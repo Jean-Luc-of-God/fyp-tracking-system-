@@ -670,7 +670,7 @@ export const HODRequest: React.FC = () => {
 
 /* ---------------- ReviewLetterModal ---------------- */
 interface ReviewLetterModalProps {
-  q: { id: string; student: Student; file: string };
+  q: { id: string; student: Student; file: string | null };
   onClose: () => void;
   onResult: (r: { type: 'approved' | 'rejected'; student: Student }) => void;
 }
@@ -679,9 +679,9 @@ export const ReviewLetterModal: React.FC<ReviewLetterModalProps> = ({ q, onClose
   const { approveCaseLetter, returnCaseLetter } = useAppContext();
   const [mode, setMode] = useState<"view" | "reject" | "approve">("view");
   const [reason, setReason] = useState("");
-  const doc = { name: "fyp-requirements-class-2026.docx", size: "46 KB", pages: 3 };
   const [reAmt, setReAmt] = useState(5);
   const [reUnit, setReUnit] = useState("days");
+  const doc = { name: "fyp-requirements-class-2026.docx", size: "46 KB", pages: 3 };
 
   function handleApprove() {
     approveCaseLetter(q.student.id);
@@ -706,15 +706,47 @@ export const ReviewLetterModal: React.FC<ReviewLetterModalProps> = ({ q, onClose
               <div style={{ fontSize: 14.5, fontWeight: 600, color: "var(--ink)" }}>
                 {q.student.name} <span className="mono muted" style={{ fontSize: 11, fontWeight: 400 }}>{q.id}</span>
               </div>
-              <div className="muted" style={{ fontSize: 12 }}>{q.student.org} · {q.file}</div>
+              <div className="muted" style={{ fontSize: 12 }}>{q.student.org}{q.file ? ` · ${q.file}` : ''}</div>
             </div>
           </div>
           <button className="btn btn-ghost btn-sm" onClick={onClose}><Icon name="x" size={14} /> Close</button>
         </div>
         
-        {/* scrollable letter */}
-        <div className="scroll-y" style={{ flex: 1, padding: 18, background: "var(--surface)" }}>
-          <LetterPaper student={q.student} long />
+        {/* uploaded letter file */}
+        <div className="scroll-y" style={{ flex: 1, background: "var(--surface)", display: "flex", flexDirection: "column" }}>
+          {q.file ? (
+            q.file.toLowerCase().endsWith('.pdf') ? (
+              <iframe
+                src={`/api/students/${q.student.id}/letter-file`}
+                style={{ flex: 1, border: "none", minHeight: 480 }}
+                title="Case letter"
+              />
+            ) : (
+              <div style={{ padding: 32, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+                <Icon name="file" size={40} style={{ color: "var(--ink-3)" }} />
+                <div style={{ fontWeight: 600, fontSize: 14, color: "var(--ink)" }}>{q.file}</div>
+                <p className="muted" style={{ fontSize: 13, textAlign: "center" }}>
+                  This file cannot be previewed inline. Download it to view.
+                </p>
+                <a
+                  href={`/api/students/${q.student.id}/letter-file`}
+                  download={q.file}
+                  className="btn btn-primary"
+                  style={{ textDecoration: "none" }}
+                >
+                  <Icon name="file" size={15} /> Download letter
+                </a>
+              </div>
+            )
+          ) : (
+            <div style={{ padding: 32, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+              <Icon name="alert" size={32} style={{ color: "var(--amber)" }} />
+              <div style={{ fontWeight: 600, fontSize: 14, color: "var(--ink)" }}>No file uploaded</div>
+              <p className="muted" style={{ fontSize: 13, textAlign: "center" }}>
+                The student submitted their case letter without attaching a file.
+              </p>
+            </div>
+          )}
         </div>
         
         {/* sticky answer bar */}
@@ -787,7 +819,7 @@ export const ReviewLetterModal: React.FC<ReviewLetterModalProps> = ({ q, onClose
 /* ---------------- HODReview ---------------- */
 export const HODReview: React.FC = () => {
   const { students } = useAppContext();
-  const [review, setReview] = useState<{ id: string; student: Student; file: string } | null>(null);
+  const [review, setReview] = useState<{ id: string; student: Student; file: string | null } | null>(null);
   const [result, setResult] = useState<{ type: 'approved' | 'rejected'; student: Student } | null>(null);
   const [found, setFound] = useState<Student | null>(null);
 
@@ -797,7 +829,7 @@ export const HODReview: React.FC = () => {
     .map(s => ({
       id: s.id,
       student: s,
-      file: "case-letter.pdf"
+      file: s.letterFileName || null
     }));
 
   const list = found ? queue.filter(q => q.id === found.id) : queue;
@@ -839,7 +871,7 @@ export const HODReview: React.FC = () => {
                   {q.student.name} <span className="mono muted" style={{ fontSize: 11, fontWeight: 400 }}>{q.id}</span>
                 </div>
                 <div className="muted" style={{ fontSize: 12 }}>
-                  {q.student.org} · <span className="mono">{q.file}</span> · 4-page letter
+                  {q.student.org} · <span className="mono">{q.file || "no file attached"}</span>
                 </div>
               </div>
               <button className="btn btn-primary btn-sm" onClick={() => setReview(q)}>
