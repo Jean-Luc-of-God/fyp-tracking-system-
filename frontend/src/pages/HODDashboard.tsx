@@ -14,7 +14,6 @@ import {
   StudentIdSearch,
   LetterStatusBadge,
   RichText,
-  DocChip,
   Countdown,
   useNow,
   notify
@@ -682,7 +681,6 @@ export const ReviewLetterModal: React.FC<ReviewLetterModalProps> = ({ q, onClose
   const [reAmt, setReAmt] = useState(5);
   const [reUnit, setReUnit] = useState("days");
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const doc = { name: "fyp-requirements-class-2026.docx", size: "46 KB", pages: 3 };
 
   useEffect(() => {
     if (!q.file) return;
@@ -818,11 +816,10 @@ export const ReviewLetterModal: React.FC<ReviewLetterModalProps> = ({ q, onClose
           
           {mode === "approve" && (
             <div style={{ padding: "14px 18px" }}>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>
-                Attach requirements (Word) — advances {q.student.name} to Prototyping
+              <div style={{ fontSize: 13, color: "var(--ink-2)", marginBottom: 12 }}>
+                Approving this letter will move <strong>{q.student.name}</strong> to the Prototype Review phase and send them an email notification.
               </div>
-              <DocChip doc={doc} action="Preview" tone="navy" />
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 9, marginTop: 10 }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 9 }}>
                 <button className="btn btn-ghost" onClick={() => setMode("view")}>Back to letter</button>
                 <button className="btn btn-primary" onClick={handleApprove}>
                   <Icon name="check" size={15} /> Approve &amp; notify student
@@ -869,7 +866,7 @@ export const HODReview: React.FC = () => {
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: result.type === "approved" ? "var(--green-bg)" : "var(--red-bg)", borderRadius: 10, marginBottom: 16, fontSize: 13, color: result.type === "approved" ? "var(--green-deep)" : "var(--red-deep)" }}>
           <Icon name={result.type === "approved" ? "checkCircle" : "refresh"} size={16} />
           {result.type === "approved" ? (
-            <span><strong>{result.student.name}</strong> approved — requirements document sent and the student now sees the Prototyping phase on their dashboard.</span>
+            <span><strong>{result.student.name}</strong> approved — letter accepted and the student has been moved to the Prototype Review phase.</span>
           ) : (
             <span><strong>{result.student.name}</strong>'s letter returned — your reason was sent and is visible on their letter page so they can revise &amp; resend.</span>
           )}
