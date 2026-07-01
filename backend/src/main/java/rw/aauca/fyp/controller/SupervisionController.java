@@ -9,9 +9,12 @@ import org.springframework.web.bind.annotation.*;
 import rw.aauca.fyp.dto.request.AvailabilitySlotRequest;
 import rw.aauca.fyp.dto.request.MeetingOutcomeRequest;
 import rw.aauca.fyp.dto.request.ScheduleMeetingRequest;
+import rw.aauca.fyp.dto.response.AvailabilitySlotResponse;
+import rw.aauca.fyp.dto.response.MeetingResponse;
 import rw.aauca.fyp.entity.User;
 import rw.aauca.fyp.service.SupervisionService;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -27,19 +30,21 @@ public class SupervisionController {
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> addSlot(@Valid @RequestBody AvailabilitySlotRequest req,
                                      @AuthenticationPrincipal User actor) {
-        return ResponseEntity.ok(supervisionService.addSlot(req, actor));
+        return ResponseEntity.ok(AvailabilitySlotResponse.from(supervisionService.addSlot(req, actor)));
     }
 
     @GetMapping("/slots/me")
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> mySlots(@AuthenticationPrincipal User actor) {
-        return ResponseEntity.ok(supervisionService.getMySlots(actor));
+        return ResponseEntity.ok(supervisionService.getMySlots(actor)
+                .stream().map(AvailabilitySlotResponse::from).toList());
     }
 
     @GetMapping("/slots/{supervisorId}")
     @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN','STUDENT')")
     public ResponseEntity<?> slotsBySupervisor(@PathVariable UUID supervisorId) {
-        return ResponseEntity.ok(supervisionService.getSlotsForSupervisor(supervisorId));
+        return ResponseEntity.ok(supervisionService.getSlotsForSupervisor(supervisorId)
+                .stream().map(AvailabilitySlotResponse::from).toList());
     }
 
     @DeleteMapping("/slots/{slotId}")
@@ -56,14 +61,14 @@ public class SupervisionController {
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> scheduleMeeting(@Valid @RequestBody ScheduleMeetingRequest req,
                                              @AuthenticationPrincipal User actor) {
-        return ResponseEntity.ok(supervisionService.scheduleMeeting(req, actor));
+        return ResponseEntity.ok(MeetingResponse.from(supervisionService.scheduleMeeting(req, actor)));
     }
 
     @PatchMapping("/meetings/{meetingId}/confirm")
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> confirmMeeting(@PathVariable UUID meetingId,
                                             @AuthenticationPrincipal User actor) {
-        return ResponseEntity.ok(supervisionService.confirmMeeting(meetingId, actor));
+        return ResponseEntity.ok(MeetingResponse.from(supervisionService.confirmMeeting(meetingId, actor)));
     }
 
     @PatchMapping("/meetings/{meetingId}/outcome")
@@ -71,19 +76,21 @@ public class SupervisionController {
     public ResponseEntity<?> recordOutcome(@PathVariable UUID meetingId,
                                            @Valid @RequestBody MeetingOutcomeRequest req,
                                            @AuthenticationPrincipal User actor) {
-        return ResponseEntity.ok(supervisionService.recordOutcome(meetingId, req, actor));
+        return ResponseEntity.ok(MeetingResponse.from(supervisionService.recordOutcome(meetingId, req, actor)));
     }
 
     @GetMapping("/meetings/me")
     @PreAuthorize("hasRole('SUPERVISOR')")
     public ResponseEntity<?> myMeetings(@AuthenticationPrincipal User actor) {
-        return ResponseEntity.ok(supervisionService.getMeetingsForSupervisor(actor));
+        return ResponseEntity.ok(supervisionService.getMeetingsForSupervisor(actor)
+                .stream().map(MeetingResponse::from).toList());
     }
 
     @GetMapping("/meetings/student/{studentId}")
     @PreAuthorize("hasAnyRole('SUPERVISOR','HOD','FACILITATOR','SUPERADMIN')")
     public ResponseEntity<?> meetingsForStudent(@PathVariable UUID studentId,
                                                 @AuthenticationPrincipal User actor) {
-        return ResponseEntity.ok(supervisionService.getMeetingsForStudent(studentId, actor));
+        return ResponseEntity.ok(supervisionService.getMeetingsForStudent(studentId, actor)
+                .stream().map(MeetingResponse::from).toList());
     }
 }

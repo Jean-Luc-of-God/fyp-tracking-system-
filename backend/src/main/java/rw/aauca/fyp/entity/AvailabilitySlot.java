@@ -33,6 +33,7 @@ public class AvailabilitySlot {
     private String location;
 
     @Column(nullable = false)
+    @Builder.Default
     private boolean active = true;
 
     @Column(name = "created_at", nullable = false, updatable = false)
