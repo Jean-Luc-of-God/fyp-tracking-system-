@@ -19,6 +19,7 @@ public class ProposalAttemptResponse {
     private String reviewedByName;
     private Instant submittedAt;
     private Instant reviewedAt;
+    private String proposalFileName;
 
     public static ProposalAttemptResponse from(ProposalAttempt a) {
         return ProposalAttemptResponse.builder()
@@ -31,6 +32,7 @@ public class ProposalAttemptResponse {
                 .reviewedByName(a.getReviewedBy() != null ? a.getReviewedBy().getFullName() : null)
                 .submittedAt(a.getSubmittedAt())
                 .reviewedAt(a.getReviewedAt())
+                .proposalFileName(a.getProposalFileName())
                 .build();
     }
 }

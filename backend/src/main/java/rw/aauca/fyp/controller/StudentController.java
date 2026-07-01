@@ -194,6 +194,44 @@ public class StudentController {
                 studentService.withdrawStudent(id, body.getOrDefault("note", null), actor)));
     }
 
+    @PostMapping("/{id}/requirements-doc")
+    @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN')")
+    public ResponseEntity<StudentResponse> uploadRequirementsDoc(
+            @PathVariable UUID id,
+            @RequestParam("file") MultipartFile file) throws IOException {
+        var student = studentService.getById(id);
+        studentService.saveRequirementsFile(student, file);
+        return ResponseEntity.ok(StudentResponse.from(studentService.getById(id)));
+    }
+
+    @GetMapping("/{id}/requirements-doc")
+    @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN','SUPERVISOR')")
+    public ResponseEntity<Resource> downloadRequirementsDoc(@PathVariable UUID id) throws IOException {
+        var student = studentService.getById(id);
+        if (student.getRequirementsFileName() == null) return ResponseEntity.notFound().build();
+        Path file = Paths.get("uploads/requirements/" + id + "/" + student.getRequirementsFileName());
+        Resource resource = new UrlResource(file.toUri());
+        if (!resource.exists()) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + student.getRequirementsFileName() + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(resource);
+    }
+
+    @GetMapping("/me/requirements-doc")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<Resource> downloadMyRequirementsDoc(@AuthenticationPrincipal User actor) throws IOException {
+        var student = studentService.getByUserId(actor.getId());
+        if (student.getRequirementsFileName() == null) return ResponseEntity.notFound().build();
+        Path file = Paths.get("uploads/requirements/" + student.getId() + "/" + student.getRequirementsFileName());
+        Resource resource = new UrlResource(file.toUri());
+        if (!resource.exists()) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + student.getRequirementsFileName() + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(resource);
+    }
+
     @GetMapping("/me/letter-file")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<Resource> downloadMyLetterFile(@AuthenticationPrincipal User actor) throws IOException {

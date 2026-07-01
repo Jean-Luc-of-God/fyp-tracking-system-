@@ -66,6 +66,9 @@ public class Student {
     @Column(name = "letter_file_name")
     private String letterFileName;
 
+    @Column(name = "requirements_file_name")
+    private String requirementsFileName;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default
     private Instant createdAt = Instant.now();

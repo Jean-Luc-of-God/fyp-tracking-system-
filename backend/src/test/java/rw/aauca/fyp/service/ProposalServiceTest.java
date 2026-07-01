@@ -74,12 +74,12 @@ class ProposalServiceTest {
     // ──────────────────────────────────────────────────────
 
     @Test
-    void submit_fromPrototypeGranted_succeeds() {
+    void submit_fromPrototypeGranted_succeeds() throws Exception {
         when(proposalAttemptRepository.findFirstByStudentIdAndStatus(studentId, ProposalStatus.PENDING))
                 .thenReturn(Optional.empty());
         when(proposalAttemptRepository.countByStudentId(studentId)).thenReturn(0);
 
-        ProposalAttempt result = service.submit(studentId, reviewer);
+        ProposalAttempt result = service.submit(studentId, reviewer, null);
 
         assertThat(result.getAttemptNumber()).isEqualTo(1);
         assertThat(result.getStatus()).isEqualTo(ProposalStatus.PENDING);
@@ -87,40 +87,40 @@ class ProposalServiceTest {
     }
 
     @Test
-    void submit_fromProposalUnderReview_allowed() {
+    void submit_fromProposalUnderReview_allowed() throws Exception {
         student.setState(StudentState.PROPOSAL_UNDER_REVIEW);
         when(proposalAttemptRepository.findFirstByStudentIdAndStatus(studentId, ProposalStatus.PENDING))
                 .thenReturn(Optional.empty());
         when(proposalAttemptRepository.countByStudentId(studentId)).thenReturn(1);
 
-        ProposalAttempt result = service.submit(studentId, reviewer);
+        ProposalAttempt result = service.submit(studentId, reviewer, null);
         assertThat(result.getAttemptNumber()).isEqualTo(2);
     }
 
     @Test
-    void submit_fromWrongState_throws() {
+    void submit_fromWrongState_throws() throws Exception {
         student.setState(StudentState.REGISTERED);
 
-        assertThatThrownBy(() -> service.submit(studentId, reviewer))
+        assertThatThrownBy(() -> service.submit(studentId, reviewer, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("PROTOTYPE_GRANTED");
     }
 
     @Test
-    void submit_whenLocked_throws() {
+    void submit_whenLocked_throws() throws Exception {
         student.setProposalLocked(true);
 
-        assertThatThrownBy(() -> service.submit(studentId, reviewer))
+        assertThatThrownBy(() -> service.submit(studentId, reviewer, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("locked");
     }
 
     @Test
-    void submit_whenAlreadyPending_throws() {
+    void submit_whenAlreadyPending_throws() throws Exception {
         when(proposalAttemptRepository.findFirstByStudentIdAndStatus(studentId, ProposalStatus.PENDING))
                 .thenReturn(Optional.of(new ProposalAttempt()));
 
-        assertThatThrownBy(() -> service.submit(studentId, reviewer))
+        assertThatThrownBy(() -> service.submit(studentId, reviewer, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("already under review");
     }
@@ -208,7 +208,7 @@ class ProposalServiceTest {
     }
 
     @Test
-    void thirdRejection_locksProposalSubmission() {
+    void thirdRejection_locksProposalSubmission() throws Exception {
         student.setState(StudentState.PROPOSAL_UNDER_REVIEW);
         ProposalAttempt pending = ProposalAttempt.builder()
                 .student(student).attemptNumber(3).status(ProposalStatus.PENDING).build();
@@ -225,11 +225,11 @@ class ProposalServiceTest {
     }
 
     @Test
-    void submitAfterLock_throws() {
+    void submitAfterLock_throws() throws Exception {
         student.setState(StudentState.PROTOTYPE_GRANTED);
         student.setProposalLocked(true);
 
-        assertThatThrownBy(() -> service.submit(studentId, reviewer))
+        assertThatThrownBy(() -> service.submit(studentId, reviewer, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("locked");
     }

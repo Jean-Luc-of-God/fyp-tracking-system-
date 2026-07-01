@@ -59,7 +59,7 @@ interface AppContextType {
   // Case-Letter Actions
   requestCaseLetters: (studentIds: string[], durationDays: number, batchId: string) => void;
   submitCaseLetter: (studentId: string, fileName?: string) => void;
-  approveCaseLetter: (studentId: string) => void;
+  approveCaseLetter: (studentId: string, requirementsFile?: File) => void;
   returnCaseLetter: (studentId: string, reasonHtml: string, resubmitDays: number) => void;
   
   // Supervision & Meetings Actions
@@ -315,24 +315,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 5. HOD Approves Case Study Letter
-  const approveCaseLetter = async (studentId: string) => {
+  const approveCaseLetter = async (studentId: string, requirementsFile?: File) => {
     if (getToken()) {
       try {
+        if (requirementsFile) {
+          const form = new FormData();
+          form.append('file', requirementsFile);
+          const token = getToken();
+          await fetch(`/api/students/${studentId}/requirements-doc`, {
+            method: 'POST',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: form,
+          });
+        }
         const updated = await studentsApi.transition(studentId, 'CASE_LETTER_APPROVED');
         setState(prev => ({
           ...prev,
-          letters: {
-            ...prev.letters,
-            [studentId]: {
-              ...(prev.letters[studentId] || {}),
-              status: 'approved' as const,
-              approvedTs: Date.now(),
-              requirements: { name: "fyp-requirements-class-2026.docx", size: "46 KB", pages: 3 },
-              rejectionReason: undefined,
-            }
-          },
           students: prev.students.map(s =>
-            s.id === studentId ? { ...s, stateIndex: 2, enteredStageTs: updated.stateEnteredAt } : s
+            s.id === studentId
+              ? { ...s, stateIndex: 2, enteredStageTs: updated.stateEnteredAt,
+                  requirementsFileName: requirementsFile?.name ?? s.requirementsFileName }
+              : s
           ),
         }));
         return;

@@ -59,6 +59,7 @@ export const NAV: { [role: string]: { id: string; label: string; icon: string; b
     { id: "request", label: "Request Letters", icon: "send" },
     { id: "review", label: "Review Letters", icon: "checkCircle" },
     { id: "proto-review", label: "Prototype Review", icon: "layers" },
+    { id: "proposal-review", label: "Review Proposals", icon: "file" },
     { id: "supervisors", label: "Assign Supervisors", icon: "users" },
     { id: "examiners", label: "Assign Pre-Defense", icon: "scale" },
     { id: "mysupervision", label: "My Supervision", icon: "activity" },
@@ -160,8 +161,9 @@ export const AppShell: React.FC<AppShellProps> = ({
 
   // Live badge counts keyed by nav item id
   const liveBadges: Record<string, number> = {
-    'review': students.filter(s => s.stateIndex === 1).length,           // CASE_LETTER_SUBMITTED
-    'proto-review': students.filter(s => s.stateIndex === 2 || s.stateIndex === 3).length, // needs action
+    'review': students.filter(s => s.stateIndex === 1).length,              // CASE_LETTER_SUBMITTED
+    'proto-review': students.filter(s => s.stateIndex === 2 || s.stateIndex === 3).length,
+    'proposal-review': students.filter(s => s.stateIndex === 5).length,    // PROPOSAL_UNDER_REVIEW
   };
   const cur = roleById[role];
   const nav = NAV[role] || [];

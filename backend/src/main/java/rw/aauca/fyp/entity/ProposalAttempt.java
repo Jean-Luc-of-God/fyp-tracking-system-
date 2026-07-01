@@ -40,4 +40,7 @@ public class ProposalAttempt {
 
     @Column(name = "reviewed_at")
     private Instant reviewedAt;
+
+    @Column(name = "proposal_file_name")
+    private String proposalFileName;
 }

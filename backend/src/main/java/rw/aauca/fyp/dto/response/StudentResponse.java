@@ -32,6 +32,7 @@ public class StudentResponse {
     private String note;
     private String letterRejectionReason;
     private String letterFileName;
+    private String requirementsFileName;
 
     public static StudentResponse from(Student s) {
         return StudentResponse.builder()
@@ -57,6 +58,7 @@ public class StudentResponse {
                 .note(s.getNote())
                 .letterRejectionReason(s.getLetterRejectionReason())
                 .letterFileName(s.getLetterFileName())
+                .requirementsFileName(s.getRequirementsFileName())
                 .build();
     }
 }

@@ -681,6 +681,7 @@ export const ReviewLetterModal: React.FC<ReviewLetterModalProps> = ({ q, onClose
   const [reAmt, setReAmt] = useState(5);
   const [reUnit, setReUnit] = useState("days");
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [reqFile, setReqFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (!q.file) return;
@@ -696,7 +697,7 @@ export const ReviewLetterModal: React.FC<ReviewLetterModalProps> = ({ q, onClose
   }, [q.student.id, q.file]);
 
   function handleApprove() {
-    approveCaseLetter(q.student.id);
+    approveCaseLetter(q.student.id, reqFile ?? undefined);
     onResult({ type: "approved", student: q.student });
   }
 
@@ -816,8 +817,26 @@ export const ReviewLetterModal: React.FC<ReviewLetterModalProps> = ({ q, onClose
           
           {mode === "approve" && (
             <div style={{ padding: "14px 18px" }}>
-              <div style={{ fontSize: 13, color: "var(--ink-2)", marginBottom: 12 }}>
-                Approving this letter will move <strong>{q.student.name}</strong> to the Prototype Review phase and send them an email notification.
+              <div className="eyebrow" style={{ marginBottom: 8 }}>
+                Attach prototype requirements (optional)
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  style={{ fontSize: 13 }}
+                  onChange={e => setReqFile(e.target.files?.[0] ?? null)}
+                />
+                {reqFile && (
+                  <div style={{ marginTop: 5, fontSize: 12, color: "var(--green)" }}>
+                    ✓ {reqFile.name} — will be sent to the student
+                  </div>
+                )}
+                {!reqFile && (
+                  <div style={{ marginTop: 5, fontSize: 12, color: "var(--ink-3)" }}>
+                    No file — student will be approved without a requirements document.
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 9 }}>
                 <button className="btn btn-ghost" onClick={() => setMode("view")}>Back to letter</button>
@@ -1189,6 +1208,160 @@ export const ProtoReview: React.FC = () => {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+};
+
+/* ---------------- ProposalReview ---------------- */
+export const ProposalReview: React.FC = () => {
+  const { students } = useAppContext();
+  const [active, setActive] = useState<Student | null>(null);
+  const [result, setResult] = useState<{ type: 'accepted' | 'rejected'; name: string } | null>(null);
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  const queue = students.filter(s => s.stateIndex === 5); // PROPOSAL_UNDER_REVIEW
+
+  useEffect(() => {
+    setBlobUrl(null);
+    if (!active) return;
+    let url = '';
+    const token = localStorage.getItem('fyp_jwt');
+    fetch(`/api/proposals/${active.id}/latest-file`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.ok ? r.blob() : Promise.reject())
+      .then(blob => { url = URL.createObjectURL(blob); setBlobUrl(url); })
+      .catch(() => {});
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [active?.id]);
+
+  async function decide(decision: 'ACCEPTED' | 'REJECTED') {
+    if (!active) return;
+    if (decision === 'REJECTED' && !reason.trim()) return;
+    setSubmitting(true);
+    try {
+      await proposalsApi.review(active.id, decision, reason.trim() || undefined);
+      setResult({ type: decision === 'ACCEPTED' ? 'accepted' : 'rejected', name: active.name });
+      setActive(null);
+      setReason('');
+      setBlobUrl(null);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Action failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div>
+      <SectionTitle sub="Review submitted proposal documents and record an accept or reject decision.">
+        Proposal Review
+      </SectionTitle>
+
+      {result && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 10, marginBottom: 16, fontSize: 13,
+          background: result.type === 'accepted' ? 'var(--green-bg)' : 'var(--red-bg)',
+          color: result.type === 'accepted' ? 'var(--green-deep)' : 'var(--red-deep)' }}>
+          <Icon name={result.type === 'accepted' ? 'checkCircle' : 'refresh'} size={16} />
+          <span><strong>{result.name}</strong> — proposal {result.type === 'accepted' ? 'accepted and moved to supervision phase' : 'rejected, student notified'}.</span>
+          <button className="btn btn-quiet btn-sm" onClick={() => setResult(null)} style={{ marginLeft: 'auto' }}>Dismiss</button>
+        </div>
+      )}
+
+      {/* Queue */}
+      <div className="card" style={{ overflow: 'hidden', marginBottom: 18 }}>
+        <div className="card-hd">
+          <h3>Awaiting review</h3>
+          <Badge tone="amber">{queue.length} pending</Badge>
+        </div>
+        <table className="tbl">
+          <thead><tr><th>Student</th><th>Organisation</th><th>Topic</th><th>Action</th></tr></thead>
+          <tbody>
+            {queue.map(s => (
+              <tr key={s.id}>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <Avatar name={s.name} role="Student" size={26} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{s.name}</div>
+                      <div className="mono muted" style={{ fontSize: 10.5 }}>{s.reg}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className="muted" style={{ fontSize: 12.5 }}>{s.org || '—'}</td>
+                <td className="muted" style={{ fontSize: 12.5 }}>{s.topic || '—'}</td>
+                <td>
+                  <button className="btn btn-quiet btn-sm" onClick={() => { setActive(s); setReason(''); }}>
+                    <Icon name="file" size={14} /> Open proposal
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!queue.length && (
+              <tr><td colSpan={4} className="muted" style={{ textAlign: 'center', padding: 20 }}>No proposals are currently under review.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Review modal */}
+      {active && (
+        <Modal open onClose={() => { setActive(null); setBlobUrl(null); setReason(''); }} width={700}>
+          <div className="card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '88vh' }}>
+            {/* header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 18px', borderBottom: '1px solid var(--line)', flex: 'none' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                <Avatar name={active.name} role="Student" size={34} />
+                <div>
+                  <div style={{ fontSize: 14.5, fontWeight: 600 }}>{active.name}</div>
+                  <div className="muted" style={{ fontSize: 12 }}>{active.topic || 'No topic'} · {active.org || ''}</div>
+                </div>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setActive(null); setBlobUrl(null); setReason(''); }}>
+                <Icon name="x" size={14} /> Close
+              </button>
+            </div>
+
+            {/* proposal document */}
+            <div style={{ flex: 1, background: 'var(--surface)', display: 'flex', flexDirection: 'column', minHeight: 360 }}>
+              {blobUrl ? (
+                <iframe src={blobUrl} style={{ flex: 1, border: 'none', minHeight: 360 }} title="Proposal" />
+              ) : (
+                <div style={{ padding: 32, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                  <Icon name="file" size={36} style={{ color: 'var(--ink-3)' }} />
+                  <div className="muted" style={{ fontSize: 13 }}>Loading proposal…</div>
+                  <div className="muted" style={{ fontSize: 12 }}>If nothing appears, the student may not have attached a file.</div>
+                </div>
+              )}
+            </div>
+
+            {/* decision bar */}
+            <div style={{ flex: 'none', borderTop: '1px solid var(--line)', padding: '14px 18px', background: '#fff' }}>
+              <div style={{ marginBottom: 10 }}>
+                <label className="field-label">Rejection reason <span className="muted">(required only when rejecting)</span></label>
+                <textarea
+                  className="input"
+                  rows={2}
+                  style={{ width: '100%', marginTop: 5, resize: 'vertical' }}
+                  placeholder="Explain what needs to be improved so the student can revise…"
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 9 }}>
+                <button className="btn btn-danger" disabled={submitting || !reason.trim()} onClick={() => decide('REJECTED')}>
+                  <Icon name="x" size={14} /> Reject
+                </button>
+                <button className="btn btn-primary" disabled={submitting} onClick={() => decide('ACCEPTED')}>
+                  <Icon name="check" size={14} /> Accept proposal
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

@@ -35,7 +35,8 @@ import {
   HODSupervisors,
   HODRecords,
   HODSupervisorWindow,
-  ProtoReview
+  ProtoReview,
+  ProposalReview,
 } from './pages/HODDashboard';
 import { 
   AdminDashboard, 
@@ -224,6 +225,7 @@ function MainApp() {
         case "supervisors": return <HODSupervisors />;
         case "examiners": return <FacExaminers />;
         case "proto-review": return <ProtoReview />;
+        case "proposal-review": return <ProposalReview />;
         case "mysupervision": return <HODSupervisorWindow />;
         case "availability": return <StaffAvailabilityDirectory title="Supervisor Availability" sub="Weekly office hours and contact points for staff." />;
         case "records": return <HODRecords />;

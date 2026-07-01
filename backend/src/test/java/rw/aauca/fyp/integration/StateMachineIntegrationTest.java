@@ -147,19 +147,19 @@ class StateMachineIntegrationTest {
     }
 
     @Test
-    void proposalLifecycle_threeRejectionsLockThenUnlockAndAccept() {
+    void proposalLifecycle_threeRejectionsLockThenUnlockAndAccept() throws Exception {
         walkTo(StudentState.PROTOTYPE_GRANTED);
 
         // Attempt 1 — rejected
-        proposalService.submit(student.getId(), hod);
+        proposalService.submit(student.getId(), hod, null);
         proposalService.review(student.getId(), ProposalStatus.REJECTED, "Needs more research", hod);
 
         // Attempt 2 — rejected
-        proposalService.submit(student.getId(), hod);
+        proposalService.submit(student.getId(), hod, null);
         proposalService.review(student.getId(), ProposalStatus.REJECTED, "Still insufficient", hod);
 
         // Attempt 3 — rejected → locks submission
-        proposalService.submit(student.getId(), hod);
+        proposalService.submit(student.getId(), hod, null);
         proposalService.review(student.getId(), ProposalStatus.REJECTED, "Final rejection", hod);
 
         em.flush();
@@ -176,7 +176,7 @@ class StateMachineIntegrationTest {
         assertThat(studentRepository.findById(student.getId()).orElseThrow().isProposalLocked()).isFalse();
 
         // Attempt 4 — accepted
-        proposalService.submit(student.getId(), hod);
+        proposalService.submit(student.getId(), hod, null);
         proposalService.review(student.getId(), ProposalStatus.ACCEPTED, null, hod);
 
         em.flush();
@@ -189,20 +189,20 @@ class StateMachineIntegrationTest {
     }
 
     @Test
-    void proposalSubmit_whenLocked_throws() {
+    void proposalSubmit_whenLocked_throws() throws Exception {
         walkTo(StudentState.PROTOTYPE_GRANTED);
 
-        proposalService.submit(student.getId(), hod);
+        proposalService.submit(student.getId(), hod, null);
         proposalService.review(student.getId(), ProposalStatus.REJECTED, "Bad", hod);
-        proposalService.submit(student.getId(), hod);
+        proposalService.submit(student.getId(), hod, null);
         proposalService.review(student.getId(), ProposalStatus.REJECTED, "Still bad", hod);
-        proposalService.submit(student.getId(), hod);
+        proposalService.submit(student.getId(), hod, null);
         proposalService.review(student.getId(), ProposalStatus.REJECTED, "Final", hod);
 
         em.flush();
         em.clear();
 
-        assertThatThrownBy(() -> proposalService.submit(student.getId(), hod))
+        assertThatThrownBy(() -> proposalService.submit(student.getId(), hod, null))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("locked");
     }

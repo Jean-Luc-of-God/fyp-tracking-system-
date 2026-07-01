@@ -64,6 +64,7 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
   const { student: stu, loaded, reload } = useMyStudent();
   const [proposals, setProposals] = useState<ProposalAttempt[]>([]);
   const [submittingProposal, setSubmittingProposal] = useState(false);
+  const [proposalFile, setProposalFile] = useState<File | null>(null);
 
   const loadProposals = useCallback(async (stuId: string) => {
     try {
@@ -81,8 +82,9 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
     if (!stu) return;
     setSubmittingProposal(true);
     try {
-      await proposalsApi.submit(stu.id);
+      await proposalsApi.submit(stu.id, proposalFile ?? undefined);
       notify('Proposal submitted — awaiting review', 'success');
+      setProposalFile(null);
       reload();
       await loadProposals(stu.id);
     } catch (e) {
@@ -90,6 +92,19 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
     } finally {
       setSubmittingProposal(false);
     }
+  }
+
+  async function handleViewRequirements() {
+    if (!stu) return;
+    try {
+      const token = localStorage.getItem('fyp_jwt');
+      const res = await fetch('/api/students/me/requirements-doc', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) { notify('Requirements document not available yet.', 'error'); return; }
+      const url = URL.createObjectURL(await res.blob());
+      window.open(url, '_blank');
+    } catch { notify('Could not load requirements document.', 'error'); }
   }
 
   if (!loaded) return <EmptyState title="Loading your profile…" sub="" />;
@@ -143,22 +158,48 @@ export const StudentDashboard: React.FC<NavProps> = ({ onNav }) => {
               </div>
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+            <div style={{ display: 'grid', gap: 12 }}>
               <div style={{ fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.6 }}>
                 {stu.stateIndex === 4
-                  ? 'Your prototype has been approved. Submit your research proposal to proceed.'
-                  : `Attempt ${proposals.length} was rejected. You may resubmit a revised proposal (${3 - proposals.length} attempt${3 - proposals.length !== 1 ? 's' : ''} remaining).`
+                  ? 'Your prototype has been approved. Upload your proposal PDF and submit.'
+                  : `Attempt ${proposals.length} was rejected. Upload your revised proposal and resubmit (${3 - proposals.length} attempt${3 - proposals.length !== 1 ? 's' : ''} remaining).`
                 }
               </div>
-              <button
-                className="btn btn-primary"
-                onClick={handleSubmitProposal}
-                disabled={submittingProposal}
-                style={{ flex: 'none' }}
-              >
-                <Icon name="send" size={15} />
-                {submittingProposal ? 'Submitting…' : stu.stateIndex === 4 ? 'Submit Proposal' : 'Resubmit Proposal'}
-              </button>
+              {(stu as any).requirementsFileName && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--blue-bg)', border: '1px solid #C7DCF1', borderRadius: 8 }}>
+                  <Icon name="file" size={16} style={{ color: 'var(--blue)', flex: 'none' }} />
+                  <span style={{ fontSize: 13, color: 'var(--ink-2)', flex: 1 }}>Prototype requirements document available</span>
+                  <button className="btn btn-quiet btn-sm" style={{ fontSize: 12 }} onClick={handleViewRequirements}>
+                    Download
+                  </button>
+                </div>
+              )}
+              <div>
+                <label className="field-label">Attach your proposal PDF <span className="muted">(required)</span></label>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  style={{ display: 'block', marginTop: 6, fontSize: 13 }}
+                  onChange={e => setProposalFile(e.target.files?.[0] ?? null)}
+                />
+                {proposalFile && (
+                  <div style={{ marginTop: 5, fontSize: 12, color: 'var(--green)' }}>✓ {proposalFile.name}</div>
+                )}
+              </div>
+              <div>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSubmitProposal}
+                  disabled={submittingProposal || !proposalFile}
+                  style={{ justifySelf: 'start' }}
+                >
+                  <Icon name="send" size={15} />
+                  {submittingProposal ? 'Submitting…' : stu.stateIndex === 4 ? 'Submit Proposal' : 'Resubmit Proposal'}
+                </button>
+                {!proposalFile && (
+                  <p style={{ fontSize: 12, color: 'var(--amber-deep)', margin: '6px 0 0' }}>Attach your proposal PDF before submitting.</p>
+                )}
+              </div>
             </div>
           )}
         </div>

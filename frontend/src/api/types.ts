@@ -31,6 +31,7 @@ export interface StudentResponse {
   note: string | null;
   letterRejectionReason: string | null;
   letterFileName: string | null;
+  requirementsFileName: string | null;
 }
 
 export type StudentState =
@@ -67,6 +68,7 @@ export interface ProposalAttemptResponse {
   reviewedBy: string | null;
   submittedAt: string;
   reviewedAt: string | null;
+  proposalFileName: string | null;
 }
 
 export interface PanelAssignmentResponse {

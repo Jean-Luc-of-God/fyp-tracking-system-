@@ -3,6 +3,7 @@ package rw.aauca.fyp.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import rw.aauca.fyp.entity.ProposalAttempt;
 import rw.aauca.fyp.entity.Student;
 import rw.aauca.fyp.entity.User;
@@ -11,6 +12,10 @@ import rw.aauca.fyp.enums.StudentState;
 import rw.aauca.fyp.repository.ProposalAttemptRepository;
 import rw.aauca.fyp.repository.StudentRepository;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -28,7 +33,7 @@ public class ProposalService {
     private static final int MAX_REJECTIONS = 3;
 
     @Transactional
-    public ProposalAttempt submit(UUID studentId, User actor) {
+    public ProposalAttempt submit(UUID studentId, User actor, MultipartFile file) throws IOException {
         Student student = findStudent(studentId);
 
         if (student.getState() != StudentState.PROTOTYPE_GRANTED &&
@@ -55,10 +60,18 @@ public class ProposalService {
                 .status(ProposalStatus.PENDING)
                 .build();
 
+        if (file != null && !file.isEmpty()) {
+            Path uploadDir = Paths.get("uploads/proposals/" + studentId + "/attempt-" + nextAttempt);
+            Files.createDirectories(uploadDir);
+            String safeName = (file.getOriginalFilename() != null ? file.getOriginalFilename() : "proposal")
+                    .replaceAll("[^a-zA-Z0-9._-]", "_");
+            file.transferTo(uploadDir.resolve(safeName));
+            attempt.setProposalFileName(safeName);
+        }
+
         auditService.log(actor, "PROPOSAL_SUBMITTED", "Student", studentId,
                 "Attempt " + nextAttempt, null);
 
-        // Notify supervisor (if assigned) that a proposal is awaiting review
         if (student.getSupervisor() != null) {
             emailService.notifyProposalSubmitted(student.getSupervisor(), student, nextAttempt);
         }
@@ -140,6 +153,20 @@ public class ProposalService {
 
     public List<ProposalAttempt> getHistory(UUID studentId) {
         return proposalAttemptRepository.findByStudentIdOrderByAttemptNumberAsc(studentId);
+    }
+
+    public Path getLatestProposalFile(UUID studentId) {
+        List<ProposalAttempt> attempts = proposalAttemptRepository
+                .findByStudentIdOrderByAttemptNumberAsc(studentId);
+        for (int i = attempts.size() - 1; i >= 0; i--) {
+            ProposalAttempt a = attempts.get(i);
+            if (a.getProposalFileName() != null) {
+                return Paths.get("uploads/proposals/" + studentId
+                        + "/attempt-" + a.getAttemptNumber()
+                        + "/" + a.getProposalFileName());
+            }
+        }
+        return null;
     }
 
     private Student findStudent(UUID studentId) {

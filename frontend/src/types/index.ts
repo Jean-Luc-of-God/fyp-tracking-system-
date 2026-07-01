@@ -124,6 +124,7 @@ export interface Student {
   note: string | null;
   letterRejectionReason: string | null;
   letterFileName: string | null;
+  requirementsFileName: string | null;
 }
 
 export interface NotificationLog {

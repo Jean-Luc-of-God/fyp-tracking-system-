@@ -118,9 +118,19 @@ public class StudentService {
         Files.createDirectories(uploadDir);
         String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "letter";
         String safeName = originalName.replaceAll("[^a-zA-Z0-9._-]", "_");
-        Path dest = uploadDir.resolve(safeName);
-        file.transferTo(dest);
+        file.transferTo(uploadDir.resolve(safeName));
         student.setLetterFileName(safeName);
+        studentRepository.save(student);
+    }
+
+    @Transactional
+    public void saveRequirementsFile(Student student, MultipartFile file) throws IOException {
+        Path uploadDir = Paths.get("uploads/requirements/" + student.getId());
+        Files.createDirectories(uploadDir);
+        String originalName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "requirements";
+        String safeName = originalName.replaceAll("[^a-zA-Z0-9._-]", "_");
+        file.transferTo(uploadDir.resolve(safeName));
+        student.setRequirementsFileName(safeName);
         studentRepository.save(student);
     }
 
