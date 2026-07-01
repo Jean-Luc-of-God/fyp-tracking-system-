@@ -21,6 +21,7 @@ import {
 import { EmailPreview } from '../components/Emails';
 import { studentsApi } from '../api/students';
 import { usersApi } from '../api/users';
+import { proposalsApi } from '../api/proposals';
 import type { UserResponse } from '../api/types';
 import { 
   SupDashboard, 
