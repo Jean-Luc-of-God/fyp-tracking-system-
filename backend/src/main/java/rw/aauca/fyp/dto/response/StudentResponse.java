@@ -26,7 +26,9 @@ public class StudentResponse {
     private String supervisorEmail;
     private String supervisorPhone;
     private boolean bookSignedOff;
+    private Instant bookSignedOffAt;
     private int protoAttempts;
+    private int defenseAttempts;
     private boolean proposalLocked;
     private boolean flagged;
     private String note;
@@ -52,7 +54,9 @@ public class StudentResponse {
                 .supervisorEmail(s.getSupervisor() != null ? s.getSupervisor().getEmail() : null)
                 .supervisorPhone(s.getSupervisor() != null ? s.getSupervisor().getPhone() : null)
                 .bookSignedOff(s.isBookSignedOff())
+                .bookSignedOffAt(s.getBookSignedOffAt())
                 .protoAttempts(s.getProtoAttempts())
+                .defenseAttempts(s.getDefenseAttempts())
                 .proposalLocked(s.isProposalLocked())
                 .flagged(s.isFlagged())
                 .note(s.getNote())

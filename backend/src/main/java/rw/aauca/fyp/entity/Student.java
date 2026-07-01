@@ -49,8 +49,14 @@ public class Student {
     @Column(name = "book_signed_off", nullable = false)
     private boolean bookSignedOff = false;
 
+    @Column(name = "book_signed_off_at")
+    private Instant bookSignedOffAt;
+
     @Column(name = "proto_attempts", nullable = false)
     private int protoAttempts = 0;
+
+    @Column(name = "defense_attempts", nullable = false)
+    private int defenseAttempts = 0;
 
     @Column(name = "proposal_locked", nullable = false)
     private boolean proposalLocked = false;

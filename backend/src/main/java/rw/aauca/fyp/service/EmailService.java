@@ -130,6 +130,16 @@ public class EmailService {
         send("PROPOSAL_ACCEPTED", student.getId(), studentRecord.getId(), subject, body);
     }
 
+    public void notifyBookSignedOff(User student, Student studentRecord) {
+        String subject = "[FYP] Your supervisor has signed off your book — next steps";
+        String body = "Dear " + student.getFullName() + ",\n\n"
+                + "Your supervisor has reviewed and signed off on your final year project book.\n\n"
+                + "Please bring the final printed/bound copy of your book to the HOD office for "
+                + "official submission. Your project status will be updated once it has been received.\n\n"
+                + "AUCA FYP Office";
+        send("BOOK_SIGNED_OFF", student.getId(), studentRecord.getId(), subject, body);
+    }
+
     public void notifyProposalRejected(User student, Student studentRecord, int attemptNumber,
                                         String reason, int remaining) {
         String subject = "[FYP] Your proposal has been returned for revision (attempt " + attemptNumber + ")";
@@ -171,6 +181,18 @@ public class EmailService {
                 + "\nPlease log in to the FYP portal to view full details.\n\n"
                 + "AUCA FYP Office";
         send("PANEL_ASSIGNED", examiner.getId(), student.getId(), subject, body);
+    }
+
+    public void notifyPanelScheduled(User studentUser, Student student, String panelType,
+                                      String examinerName, String scheduledAt) {
+        String subject = "[FYP] Your " + panelType.replace("_", "-") + " has been scheduled";
+        String body = "Dear " + studentUser.getFullName() + ",\n\n"
+                + "Your examiner, " + examinerName + ", has scheduled your "
+                + panelType.replace("_", "-") + " panel:\n\n"
+                + "  Date & time: " + scheduledAt + "\n"
+                + "\nPlease log in to the FYP portal for full details.\n\n"
+                + "AUCA FYP Office";
+        send("PANEL_SCHEDULED", studentUser.getId(), student.getId(), subject, body);
     }
 
     public void notifyPanelOutcome(User studentUser, Student student, String panelType, String outcome,

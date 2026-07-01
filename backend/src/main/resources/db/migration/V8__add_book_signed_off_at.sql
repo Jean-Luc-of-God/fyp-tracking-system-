@@ -1,0 +1,1 @@
+ALTER TABLE students ADD COLUMN IF NOT EXISTS book_signed_off_at TIMESTAMP;

@@ -98,6 +98,13 @@ public class StudentController {
         return ResponseEntity.ok(StudentResponse.from(studentService.signOffBook(id, actor)));
     }
 
+    @PostMapping("/{id}/mark-book-submitted")
+    @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN')")
+    public ResponseEntity<StudentResponse> markBookSubmitted(@PathVariable UUID id,
+                                                             @AuthenticationPrincipal User actor) {
+        return ResponseEntity.ok(StudentResponse.from(studentService.markBookSubmitted(id, actor)));
+    }
+
     @PostMapping("/create")
     @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN')")
     public ResponseEntity<StudentResponse> createStudent(

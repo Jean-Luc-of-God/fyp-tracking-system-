@@ -33,6 +33,7 @@ public class StudentService {
     private final PasswordEncoder passwordEncoder;
     private final AuditService auditService;
     private final StudentStateService stateService;
+    private final EmailService emailService;
 
     public List<Student> getAll() {
         return studentRepository.findAll();
@@ -70,6 +71,13 @@ public class StudentService {
         User supervisor = userRepository.findById(supervisorId)
                 .orElseThrow(() -> new RuntimeException("Supervisor not found: " + supervisorId));
 
+        if (student.getState() != StudentState.PROPOSAL_ACCEPTED) {
+            throw new IllegalStateException(
+                    "A supervisor can only be assigned once the student's proposal has been accepted. "
+                            + student.getUser().getFullName() + " is currently at: "
+                            + friendlyStateName(student.getState()));
+        }
+
         student.setSupervisor(supervisor);
         student.setSupervisorAssignedAt(Instant.now());
 
@@ -83,6 +91,24 @@ public class StudentService {
         return studentRepository.save(student);
     }
 
+    private static String friendlyStateName(StudentState state) {
+        return switch (state) {
+            case REGISTERED -> "Registered";
+            case CASE_LETTER_SUBMITTED -> "Case Letter Submitted";
+            case CASE_LETTER_APPROVED -> "Case Letter Approved";
+            case PROTOTYPE_REVIEW -> "Prototype Review";
+            case PROTOTYPE_GRANTED -> "Prototype Granted";
+            case PROPOSAL_UNDER_REVIEW -> "Proposal Under Review";
+            case PROPOSAL_ACCEPTED -> "Proposal Accepted";
+            case SUPERVISION -> "Supervision";
+            case BOOK_SUBMITTED -> "Book Submitted";
+            case PRE_DEFENSE -> "Pre-Defense";
+            case DEFENSE -> "Defense";
+            case COMPLETED -> "Completed";
+            case WITHDRAWN -> "Withdrawn";
+        };
+    }
+
     @Transactional
     public Student signOffBook(UUID studentId, User supervisor) {
         Student student = getById(studentId);
@@ -90,8 +116,24 @@ public class StudentService {
             throw new AccessDeniedException("You are not the assigned supervisor for this student");
         }
         student.setBookSignedOff(true);
-        stateService.transition(student, StudentState.BOOK_SUBMITTED, supervisor,
-                "Book signed off by supervisor");
+        student.setBookSignedOffAt(Instant.now());
+        Student saved = studentRepository.save(student);
+        auditService.log(supervisor, "SIGN_OFF_BOOK", "Student", studentId,
+                "Book signed off by supervisor " + supervisor.getFullName(), null);
+        emailService.notifyBookSignedOff(student.getUser(), student);
+        return saved;
+    }
+
+    @Transactional
+    public Student markBookSubmitted(UUID studentId, User hod) {
+        Student student = getById(studentId);
+        if (!student.isBookSignedOff()) {
+            throw new IllegalStateException(
+                    "The supervisor must sign off the book before it can be marked as received");
+        }
+        stateService.transition(student, StudentState.BOOK_SUBMITTED, hod, "Book received by HOD office");
+        auditService.log(hod, "BOOK_RECEIVED", "Student", studentId,
+                "Book physically received at HOD office", null);
         return studentRepository.save(student);
     }
 
