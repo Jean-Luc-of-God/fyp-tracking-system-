@@ -681,7 +681,21 @@ export const ReviewLetterModal: React.FC<ReviewLetterModalProps> = ({ q, onClose
   const [reason, setReason] = useState("");
   const [reAmt, setReAmt] = useState(5);
   const [reUnit, setReUnit] = useState("days");
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const doc = { name: "fyp-requirements-class-2026.docx", size: "46 KB", pages: 3 };
+
+  useEffect(() => {
+    if (!q.file) return;
+    let objectUrl = '';
+    const token = localStorage.getItem('fyp_jwt');
+    fetch(`/api/students/${q.student.id}/letter-file`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(r => r.ok ? r.blob() : Promise.reject(r.status))
+      .then(blob => { objectUrl = URL.createObjectURL(blob); setBlobUrl(objectUrl); })
+      .catch(() => { /* file not accessible — no-op */ });
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [q.student.id, q.file]);
 
   function handleApprove() {
     approveCaseLetter(q.student.id);
@@ -715,27 +729,33 @@ export const ReviewLetterModal: React.FC<ReviewLetterModalProps> = ({ q, onClose
         {/* uploaded letter file */}
         <div className="scroll-y" style={{ flex: 1, background: "var(--surface)", display: "flex", flexDirection: "column" }}>
           {q.file ? (
-            q.file.toLowerCase().endsWith('.pdf') ? (
-              <iframe
-                src={`/api/students/${q.student.id}/letter-file`}
-                style={{ flex: 1, border: "none", minHeight: 480 }}
-                title="Case letter"
-              />
+            blobUrl ? (
+              q.file.toLowerCase().endsWith('.pdf') ? (
+                <iframe
+                  src={blobUrl}
+                  style={{ flex: 1, border: "none", minHeight: 480 }}
+                  title="Case letter"
+                />
+              ) : (
+                <div style={{ padding: 32, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+                  <Icon name="file" size={40} style={{ color: "var(--ink-3)" }} />
+                  <div style={{ fontWeight: 600, fontSize: 14, color: "var(--ink)" }}>{q.file}</div>
+                  <p className="muted" style={{ fontSize: 13, textAlign: "center" }}>
+                    This file cannot be previewed inline. Download it to view.
+                  </p>
+                  <a
+                    href={blobUrl}
+                    download={q.file}
+                    className="btn btn-primary"
+                    style={{ textDecoration: "none" }}
+                  >
+                    <Icon name="file" size={15} /> Download letter
+                  </a>
+                </div>
+              )
             ) : (
-              <div style={{ padding: 32, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-                <Icon name="file" size={40} style={{ color: "var(--ink-3)" }} />
-                <div style={{ fontWeight: 600, fontSize: 14, color: "var(--ink)" }}>{q.file}</div>
-                <p className="muted" style={{ fontSize: 13, textAlign: "center" }}>
-                  This file cannot be previewed inline. Download it to view.
-                </p>
-                <a
-                  href={`/api/students/${q.student.id}/letter-file`}
-                  download={q.file}
-                  className="btn btn-primary"
-                  style={{ textDecoration: "none" }}
-                >
-                  <Icon name="file" size={15} /> Download letter
-                </a>
+              <div style={{ padding: 32, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                <div className="muted" style={{ fontSize: 13 }}>Loading letter…</div>
               </div>
             )
           ) : (

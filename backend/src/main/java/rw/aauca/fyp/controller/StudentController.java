@@ -194,6 +194,22 @@ public class StudentController {
                 studentService.withdrawStudent(id, body.getOrDefault("note", null), actor)));
     }
 
+    @GetMapping("/me/letter-file")
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<Resource> downloadMyLetterFile(@AuthenticationPrincipal User actor) throws IOException {
+        var student = studentService.getByUserId(actor.getId());
+        if (student.getLetterFileName() == null) {
+            return ResponseEntity.notFound().build();
+        }
+        Path file = Paths.get("uploads/case-letters/" + student.getId() + "/" + student.getLetterFileName());
+        Resource resource = new UrlResource(file.toUri());
+        if (!resource.exists()) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + student.getLetterFileName() + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(resource);
+    }
+
     @GetMapping("/{id}/letter-file")
     @PreAuthorize("hasAnyRole('HOD','FACILITATOR','SUPERADMIN','SUPERVISOR')")
     public ResponseEntity<Resource> downloadLetterFile(@PathVariable UUID id) throws IOException {

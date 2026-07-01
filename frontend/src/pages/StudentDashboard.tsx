@@ -366,13 +366,37 @@ export const StudentCase: React.FC = () => {
               ['Project topic', stu.topic || '—'],
               ['Organisation', stu.org || '—'],
               ['Group', stu.group || '—'],
-              ['Uploaded letter', (stu as any).letterFileName || '—'],
             ].map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 13 }}>
                 <span className="muted">{k}</span>
                 <span style={{ fontWeight: 500 }}>{v}</span>
               </div>
             ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--line-soft)', fontSize: 13 }}>
+              <span className="muted">Uploaded letter</span>
+              {(stu as any).letterFileName ? (
+                <button
+                  className="btn btn-quiet btn-sm"
+                  style={{ padding: '3px 10px', fontSize: 12 }}
+                  onClick={async () => {
+                    try {
+                      const token = localStorage.getItem('fyp_jwt');
+                      const res = await fetch('/api/students/me/letter-file', {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                      });
+                      if (!res.ok) { alert('Letter file not available.'); return; }
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      window.open(url, '_blank');
+                    } catch { alert('Could not load letter file.'); }
+                  }}
+                >
+                  View letter
+                </button>
+              ) : (
+                <span style={{ fontWeight: 500 }}>—</span>
+              )}
+            </div>
           </div>
         )}
 
